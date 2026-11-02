@@ -182,7 +182,7 @@ Time Clock Setup: the CS code is named **Customer Service** (any time that day, 
 
 
 ## Team timecards (admins and leads)
-My Time › Timecards has a **My timecard | Team timecards** switch. Team timecards lists everyone who worked in the period (Today, This week, Last week, This month, Last month or a Range up to 62 days) with entries, hours, pending, approved and not approved, and what they worked (**5H, 6H, NS, OS, CS**). Filter by **Needs approval / All approved / Has not approved / Everyone**, by shift (**5H · 6H · NS · OS · CS**, from the shift itself or that day’s schedule codes; CS also covers the CS team), by team, or by name. Tick people (or the header box for everyone shown) and use **✓ Approve selected** or **✕ Don’t approve selected** (with an optional reason each person sees) to act on all their pending entries at once; **✓ Approve N** does one person. Click a name to see their entries with Approve / Not approve / Edit for each.
+My Time › Timecards has a **My timecard | Team timecards** switch. Team timecards lists everyone who worked in the period (Today, This week, Last week, This month, Last month or a Range up to 62 days) with entries, hours, pending, approved and not approved, and what they worked (**5H, 6H, NS, OS, CS**). Filter by **Needs approval / All approved / Has not approved / Everyone** (Everyone lists the whole team, including people who haven’t signed up or clocked in yet), by shift (**5H · 6H · NS · OS · CS**, from the shift itself or that day’s schedule codes; CS also covers the CS team), by team, or by name. Tick people (or the header box for everyone shown) and use **✓ Approve selected** or **✕ Don’t approve selected** (with an optional reason each person sees) to act on all their pending entries at once; **✓ Approve N** does one person. Click a name to see their entries with Approve / Not approve / Edit for each.
 
 
 **Usual Google Meet link:** Account settings › **My Google Meet link** (Alan’s is preset to `https://meet.google.com/ara-qmvp-frj`). Schedule 1:1s fills it in, and any 1:1 booked without a link uses the manager’s usual link. Upcoming 1:1s of Alan’s that had no link get it on the next deploy.
@@ -201,3 +201,18 @@ The first time an admin signs in to an empty app, the whole PL list (125 people,
 
 ## First-time setup without email
 If email codes can’t be sent yet (Resend not set up), the first admin can still get in: enter your admin email, then **First-time setup: create my password without a code**, type the **setup key** (the first 8 characters of `SESSION_SECRET` in Vercel), and create your password + mobile number. It works only for an admin email and only until the first admin has a password; after that it’s closed and everyone uses the normal sign-in. When sending a code fails, the message now says why (e.g. the RESEND_FROM domain isn’t verified in Resend).
+
+
+Work location: everyone on the PL team is set to **Philippines** (on import, and once for existing people whose location was empty or “Manila”). Alan Bailey is left as is. Admins can still change anyone’s location on their profile.
+
+
+Metrics: a Metabase name that isn’t on the team list shows **not on the team list · ＋ Add to team** (admins). It opens Add team member with the name filled in (Patrick Emerson defaults to **Review**); once added, his numbers count for him.
+
+
+Metrics also covers people Metabase has who aren’t app users (the Oregon reviewers **Lea, Dustin, Mikayla, Kaity, Jordan Hunt, Lulu, Austin and Arman**, are **Team Oregon**, their own pill in Metrics; first names match whatever last name Metabase shows; **Princess Cordova** counts under **Grading**). Their rows show “Oregon · from Metabase”, count in the Oregon pill and averages, and admins can change the team with the small **Set team** menu on the row (saved in `settings.metrics_teams`), or add them as app users.
+
+
+**Same person, different name:** Metabase’s “Patrick Emerson” is **Pat Castillo** (Review), so those numbers are combined under Pat (`NAME_ALIASES` in `api/_lib.js`; add more there if needed).
+
+
+Metrics tables keep their header (Crop · Data · … · Total, with the team colors) pinned at the top while you scroll through people; the table scrolls inside its card.

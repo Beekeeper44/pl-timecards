@@ -87,6 +87,8 @@ const [{ n: memN2 }] = await q("select count(*)::int n from members");
 ok(memN2 === memN, "running the import again doesn't create duplicates");
 const [khimRow] = await q("select * from members where email='khim.arcilla@precisionlabeling.com'");
 ok(khimRow && khimRow.dept === "Analysts", "Khim saved in Analysts");
+ok(khimRow.work_location === "Philippines", `team members' location is Philippines (${khimRow.work_location})`);
+const [alanLoc] = await q("select work_location from members where email='alan@arenaclub.com'"); ok(alanLoc.work_location !== "Philippines", "Alan's location isn't changed");
 sent.length = 0;
 r = await A.op({ op: "invite", ids: [khimRow.id] });
 ok(r.status === 200 && sent.some(m => [].concat(m.to).includes("khim.arcilla@precisionlabeling.com")), "invite email sent to Khim");
@@ -226,6 +228,9 @@ const [st2] = await q("select value from settings where key='shift'"); ok(st2.va
 r = await A.op({ op: "setSchedule", memberId: khimRow.id, day: "2026-11-06", codes: ["OS", "5H"] });
 const [sc6] = await q("select codes from schedules where member_id=$1 and day='2026-11-06'", [khimRow.id]); ok(sc6 && sc6.codes.join() === "5H", `a switched-off code can't be set (${sc6?.codes})`);
 await A.op({ op: "shiftSettings", shift: { ...cur2, habits: { ...cur2.habits, OS: { ...cur2.habits.OS, enabled: true } } } });
+
+r = await A.op({ op: "metricsTeam", name: "Lea Alan DeBruin", dept: "Oregon" });
+const mtL = (await A.get({ week: "" })).body.metricsTeams; ok(r.status === 200 && mtL["lea alan debruin"] === "Oregon", "Metrics team for a Metabase-only person is saved");
 
 // 9. Announcements with an image
 step("9. Announcement with an image");

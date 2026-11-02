@@ -229,9 +229,10 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
+      const metricsTeams = (await sql`select value from settings where key = 'metrics_teams'`)[0]?.value || {};
       const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -632,12 +633,14 @@ export default async function handler(req, res) {
         }
         if (!clean.length) return fail(res, 400, "Nothing to import.");
         const col = k => clean.map(r => r[k]);
-        const up = await sql`insert into members (name, email, dept, job_title, rung, tier, role)
-          select u.name, u.email, u.dept, u.job_title, u.rung, u.tier, 'member'
+        // The PL team works in the Philippines (Alan, in Portland, isn't on the PL list).
+        const up = await sql`insert into members (name, email, dept, job_title, rung, tier, role, work_location)
+          select u.name, u.email, u.dept, u.job_title, u.rung, u.tier, 'member', 'Philippines'
           from unnest(${col("name")}::text[], ${col("email")}::text[], ${col("dept")}::text[], ${col("jobTitle")}::text[], ${col("rung")}::int[], ${col("tier")}::text[])
             as u(name, email, dept, job_title, rung, tier)
           on conflict (email) do update set name = excluded.name, dept = excluded.dept,
-            job_title = coalesce(excluded.job_title, members.job_title), rung = coalesce(excluded.rung, members.rung), tier = coalesce(excluded.tier, members.tier)
+            job_title = coalesce(excluded.job_title, members.job_title), rung = coalesce(excluded.rung, members.rung), tier = coalesce(excluded.tier, members.tier),
+            work_location = case when members.work_location is null or members.work_location ilike 'manila' then 'Philippines' else members.work_location end
           returning id, (xmax = 0) as inserted`;
         // Rows that report to the admin doing the import (e.g. Karl → Alan) link to that admin directly.
         const toMe = clean.filter(r => r.me).map(r => r.email);
@@ -844,6 +847,15 @@ export default async function handler(req, res) {
             }
           }
         } catch (e) { if (e.code === "23505") return fail(res, 409, "Someone else already uses that email."); throw e; }
+        return send(res, 200, { ok: true });
+      }
+      case "metricsTeam": {
+        // Metrics: put a Metabase name that isn't an app user under a team (e.g. the Oregon Review team). Empty dept removes it.
+        const name = String(b.name || "").trim().toLowerCase().slice(0, 80), dept = DEPTS.includes(b.dept) || b.dept === "Oregon" ? b.dept : null;   // Oregon = Metrics-only team
+        if (!name) return fail(res, 400, "Missing name.");
+        const [row] = await sql`select value from settings where key = 'metrics_teams'`;
+        const v = { ...(row?.value || {}) }; if (dept) v[name] = dept; else v[name] = "";
+        await sql`insert into settings (key, value) values ('metrics_teams', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
         return send(res, 200, { ok: true });
       }
       case "demoSetting": {

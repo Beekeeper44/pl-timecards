@@ -187,6 +187,9 @@ async function migrate() {
       await sql`update members set meet_link = 'https://meet.google.com/ara-qmvp-frj' where lower(email) = 'alan@arenaclub.com' and meet_link is null`;
       await sql`update meetings set link = 'https://meet.google.com/ara-qmvp-frj' where link is null and status = 'scheduled' and manager_id in (select id from members where lower(email) = 'alan@arenaclub.com')`;
     }
+    // One-time: everyone except Alan works in the Philippines.
+    const [loc] = await sql`insert into settings (key, value) values ('location_ph_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (loc) await sql`update members set work_location = 'Philippines' where lower(email) <> 'alan@arenaclub.com' and (work_location is null or work_location ilike 'manila' or work_location = '')`;
     // Reviews: columns added over time (after the reviews and settings tables exist, so a brand-new database works too).
     await sql`alter table reviews add column if not exists self_answers jsonb`;        // [{ q, a }] self review answers
     await sql`alter table reviews add column if not exists mgr_answers jsonb`;         // [{ q, rating }] manager's 1–5 votes
@@ -464,7 +467,11 @@ export async function metabaseCardRows(cardId, force = false) {
   return out;
 }
 // Match a name from Metabase (e.g. "Benedict Bueno", "Carmela Alvaro") to a roster member ("Ben Bueno", "Ma. Carmela A. Alvaro").
+// Metabase names that are a different spelling of someone on the team (same person, numbers combined under them).
+export const NAME_ALIASES = { "patrick emerson": "Pat Castillo", "pat emerson": "Pat Castillo" };
 export function matchMember(name, members) {
+  const alias = NAME_ALIASES[String(name || "").trim().toLowerCase()];
+  if (alias) { const hit = members.find(m => String(m.name || "").trim().toLowerCase() === alias.toLowerCase()); if (hit) return hit; name = alias; }
   const toks = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(t => t.length > 1 || /^[a-z]$/.test(t) === false);
   const a = toks(name).filter(t => t.length > 1); if (!a.length) return null;
   let best = null, bestScore = 0, tie = false;
