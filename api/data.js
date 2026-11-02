@@ -229,8 +229,9 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
+      const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -834,6 +835,11 @@ export default async function handler(req, res) {
           }
         } catch (e) { if (e.code === "23505") return fail(res, 409, "Someone else already uses that email."); throw e; }
         return send(res, 200, { ok: true });
+      }
+      case "demoSetting": {
+        // Team settings › show "Explore the demo" on the sign-in page (off by default)
+        await sql`insert into settings (key, value) values ('demo_on_login', ${JSON.stringify(!!b.on)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+        return send(res, 200, { ok: true, on: !!b.on });
       }
       case "memberDelete": {
         // Permanently removes a person and their own records (timecards, time off, schedules, reviews, 1:1s, notifications).

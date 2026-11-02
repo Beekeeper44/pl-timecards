@@ -186,3 +186,8 @@ My Time › Timecards has a **My timecard | Team timecards** switch. Team timeca
 
 
 **Usual Google Meet link:** Account settings › **My Google Meet link** (Alan’s is preset to `https://meet.google.com/ara-qmvp-frj`). Schedule 1:1s fills it in, and any 1:1 booked without a link uses the manager’s usual link. Upcoming 1:1s of Alan’s that had no link get it on the next deploy.
+
+
+## First sign-in and demo mode
+- **First admin:** emails in `ADMIN_EMAILS` become admins the first time they sign in. If `ADMIN_EMAILS` isn’t set, `alan@arenaclub.com` can still set the app up. Before any admin exists, the sign-in page explains this instead of “we don’t recognize that email”.
+- **Demo mode is off by default.** The sign-in page has no “Explore the demo” button and `?demo` links show “The demo is turned off”. Admins can switch it on in **Team settings › Demo mode**. (The published preview link is always the demo.)

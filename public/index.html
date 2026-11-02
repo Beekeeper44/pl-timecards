@@ -2019,6 +2019,7 @@ dialog::backdrop{background:var(--scrim)}
         <div id="adminSettings">
           <div class="panel note-panel"><div class="wtitle">Time clock</div><div class="note">Clock-in and clock-out times for the normal shift, habits and night shift are in <a href="#clocksetup">Time Clock Setup</a> in the left panel.</div></div>
           <div class="panel" id="importPanel"></div>
+          <div class="panel" id="demoPanel"></div>
           <div class="panel" id="invitePanel"></div>
           <div class="panel">
             <div class="wtitle" style="margin-bottom:12px">Add a team member</div>
@@ -2511,6 +2512,8 @@ dialog::backdrop{background:var(--scrim)}
 
   // ---------- demo mode (runs entirely in this browser tab, no server) ----------
   let DEMO = /[?&]demo\b/.test(location.search);
+  let demoAllowed = false, demoOnLogin = false;   // "Explore the demo" only when an admin switched it on in Team settings
+  const WANT_DEMO = DEMO;
   let apiDown = false;
   const D = { members: [], shifts: [], timeOff: [], meId: null, adminId: null, memberId: null, seq: 1 };
   const did = () => "d" + (D.seq++);
@@ -2702,6 +2705,7 @@ dialog::backdrop{background:var(--scrim)}
         meetings: (D.meetings || []).filter(x => admin || x.managerId === D.meId || x.memberId === D.meId).map(x => ({ ...JSON.parse(JSON.stringify(x)), privateNotes: admin || x.managerId === D.meId ? x.privateNotes : null })),
         cycles: (D.cycles || []).map(x => ({ ...x })),
         deleted: admin ? (D.deleted || []).map(x => ({ ...x })) : [],
+        demoOnLogin: !!D.demoOnLogin,
         announcements: (D.announcements = (D.announcements || []).filter(x => x.at > Date.now() - 7 * 86400000)).map(x => ({ ...x })),
         reviews: (D.reviews || []).filter(r => admin || r.memberId === D.meId || r.reviewerId === D.meId).map(r => { const full = admin || r.reviewerId === D.meId || r.status === "shared"; return { ...r, rating: full ? r.rating : null, strengths: full ? r.strengths : null, growth: full ? r.growth : null, goals: full ? r.goals : null }; }),
         updates: (D.pupdates || []).filter(u => admin || u.authorId === D.meId || (u.memberId === D.meId && u.shared) || D.members.find(x => x.id === u.memberId)?.managerId === D.meId).sort((a, b) => b.at - a.at).map(u => ({ ...u })),
@@ -2821,6 +2825,7 @@ dialog::backdrop{background:var(--scrim)}
         Object.assign(m, f); return { ok: true };
       }
       case "resetPin": D.members.find(x => x.id === b.id).hasPin = false; return { ok: true };
+      case "demoSetting": D.demoOnLogin = !!b.on; return { ok: true, on: !!b.on };
       case "memberDelete": { const m0 = D.members.find(x => x.id === b.id); if (!m0) derr(404, "That person is already gone."); if (b.id === D.meId) derr(400, "You can’t delete your own account.");
         if ((b.confirmName || "").trim().toLowerCase() !== m0.name.trim().toLowerCase()) derr(400, "Type their full name to confirm.");
         D.members = D.members.filter(x => x.id !== b.id); D.members.forEach(x => { if (x.managerId === b.id) x.managerId = null; });
@@ -2892,7 +2897,7 @@ dialog::backdrop{background:var(--scrim)}
   let lastLoadAt = 0, lastRev = null;
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
-    deletedPeople = d.deleted || []; me = d.me; members = d.members; live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
+    deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; me = d.me; members = d.members; live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
   // so a change you just made always shows on the very next paint.
@@ -6559,7 +6564,14 @@ ${others.map(m => m.name).join(", ")} will report to ${L.name.split(" ")[0]}.`, 
       renderSettings();
     };
   }
+  function renderDemoPanel() {
+    if (!$("demoPanel")) return;
+    $("demoPanel").innerHTML = `<div class="weekhead"><div><div class="wtitle">Demo mode</div><div class="note">Off: the sign-in page only has your work email sign-in, and links ending in ?demo don’t open the demo. On: anyone at the sign-in page can click “Explore the demo” (sample data in their own browser; nothing is saved or sent).</div></div>
+      <label class="switch"><input type="checkbox" id="demoOnLogin" ${demoOnLogin ? "checked" : ""}><span></span>${demoOnLogin ? "On" : "Off"}</label></div>`;
+    $("demoOnLogin").onchange = e => { const on = e.target.checked; run(() => dataCall({ op: "demoSetting", on }), on ? "Demo is on for the sign-in page" : "Demo is off"); };
+  }
   function renderTeamSettings() {
+    renderDemoPanel();
     if (!isAdmin()) return;
     renderShiftPanel(); renderImportPanel(); renderInvitePanel();
     $("newDept").innerHTML = DEPTS.map(d => `<option>${d[0]}</option>`).join("");
@@ -6780,13 +6792,13 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
         <label>Email<input class="field" id="aEmail" type="email" autocomplete="username" inputmode="email" value="${esc(aEmail)}"></label>
         ${err}
         <button class="btn primary" id="aGo" ${dis}>Continue</button>
-        <div class="or">or</div>
-        <button class="btn" id="aDemo">Explore the demo</button>
+        ${demoAllowed ? `<div class="or">or</div>
+        <button class="btn" id="aDemo">Explore the demo</button>` : ""}
         <div class="ahelp">First time here? Enter the email your lead added for you. We’ll email you a code, then you’ll create a password and add your mobile number.</div>`;
       $("aEmail").oninput = e => { aEmail = e.target.value; };
       $("aEmail").onkeydown = e => { if (e.key === "Enter") doLookup(); };
       $("aGo").onclick = doLookup; focus = "aEmail";
-      $("aDemo").onclick = startDemo;
+      if ($("aDemo")) $("aDemo").onclick = startDemo;
     } else if (aStep === "pin") {
       b.innerHTML = `${pill(false)}
         <h2>Enter your password</h2>
@@ -6946,10 +6958,11 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   document.addEventListener("visibilitychange", wake); window.addEventListener("focus", wake);
   document.addEventListener("visibilitychange", () => { if (me && !document.hidden) load(); });
   if (!DEMO) try { const c = JSON.parse(sessionStorage.getItem(CACHE_KEY) || "null"); if (c && c.me) { applyData(c); lastRev = c.rev ?? null; weekStart = mondayOf(today); const v0 = VIEWS.includes(h) || h.startsWith("mytime-") || h.startsWith("profile-") ? h : homeView(); lastLoadAt = 0; setView(v0); } } catch (e) {}
-  if (DEMO) startDemo();
-  else load().then(() => { if (me) setView(VIEWS.includes(h) || h.startsWith("mytime-") || h.startsWith("profile-") ? h : homeView()); else if (apiDown) { aErr = "The server isn’t set up yet, so sign-in won’t work here. You can explore the demo instead."; renderAuth(); } });
+  if (DEMO && !/[?&]demo\b/.test(location.search)) startDemo();   // the published preview build is always a demo
+  else if (DEMO) { DEMO = false; fetch("/api/auth?config=1").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(c => { demoAllowed = !!c.demo; if (demoAllowed) { DEMO = true; startDemo(); } else { aErr = "The demo is turned off. Sign in with your work email."; history.replaceState(null, "", location.pathname + location.hash); load(); } }); }
+  if (!DEMO && !WANT_DEMO) fetch("/api/auth?config=1").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(c => { demoAllowed = !!c.demo; if (!me && typeof renderAuth === "function") renderAuth(); });
+  if (!DEMO && !WANT_DEMO) load().then(() => { if (me) setView(VIEWS.includes(h) || h.startsWith("mytime-") || h.startsWith("profile-") ? h : homeView()); else if (apiDown) { aErr = "The server isn’t set up yet, so sign-in won’t work here. You can explore the demo instead."; renderAuth(); } });
 })();
 </script>
 </body>
 </html>
- 

@@ -28,9 +28,10 @@ const setPending = (res, p) => setCookie(res, "pltc_p", sign({ ...p, exp: Date.n
 async function findMember(email) {
   const [m] = await sql`select * from members where email = ${email}`;
   if (m) return m;
-  const admins = (process.env.ADMIN_EMAILS || "").split(",").map(normEmail).filter(Boolean);
+  // Admin emails come from ADMIN_EMAILS in Vercel. If that isn't set, Alan (the owner) can still set the app up.
+  const admins = (process.env.ADMIN_EMAILS || "alan@arenaclub.com").split(",").map(normEmail).filter(Boolean);
   if (!admins.includes(email)) return null;
-  const name = email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const name = email === "alan@arenaclub.com" ? "Alan Bailey" : email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   const [created] = await sql`insert into members (name, email, role, dept) values (${name}, ${email}, 'admin', 'Managers')
     on conflict (email) do update set email = excluded.email returning *`;
   return created;
@@ -45,6 +46,11 @@ export default async function handler(req, res) {
   try {
     await ensureSchema();
     if (req.method === "GET") {
+      // Public sign-in page settings (no account needed): is "Explore the demo" switched on by an admin?
+      if (req.query && req.query.config) {
+        const [d] = await sql`select value from settings where key = 'demo_on_login'`;
+        return send(res, 200, { demo: d?.value === true });
+      }
       const me = await currentUser(req);
       return me ? send(res, 200, { me }) : fail(res, 401, "Signed out");
     }
@@ -55,7 +61,11 @@ export default async function handler(req, res) {
         const email = normEmail(b.email);
         if (!emailOk(email)) return fail(res, 400, "Enter the email your lead added for you.");
         const m = await findMember(email);
-        if (!m || !m.active) return fail(res, 404, "We don’t recognize that email. Ask your lead to add it to the roster.");
+        if (!m || !m.active) {
+          const [{ n }] = await sql`select count(*)::int n from members where role = 'admin'`;
+          return fail(res, 404, n ? "We don’t recognize that email. Ask your lead to add it to the roster."
+            : "PL Time Cards isn’t set up yet. The first admin signs in with an email listed in ADMIN_EMAILS (Vercel › Settings › Environment Variables), then redeploys.");
+        }
         clearCookie(res, "pltc_p");
         return send(res, 200, { name: m.name, email: m.email, hasPin: !!m.pin_hash, hasPhone: !!m.phone, channels: channelsFor(m) });
       }

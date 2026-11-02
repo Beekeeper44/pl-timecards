@@ -42,6 +42,13 @@ let r = await health({ method: "GET", query: {}, headers: {} }, { status(c) { th
 const tables = (await q("select table_name from information_schema.tables where table_schema='public' order by 1")).map(x => x.table_name);
 ok(tables.length >= 8, `tables created automatically (${tables.join(", ")})`);
 
+// 1b. Sign-in page settings
+step("1b. Sign-in page: demo off by default");
+let cfg = await new Client().call(auth, "GET", { config: "1" });
+ok(cfg.status === 200 && cfg.body.demo === false, "Explore the demo is off until an admin turns it on");
+r = await new Client().auth({ action: "lookup", email: "someone@precisionlabeling.com" });
+ok(r.status === 404 && /isn’t set up yet/.test(r.body.error), "before any admin exists, the sign-in page explains how to set up");
+
 // 2. Admin signs up with email + password
 step("2. Admin signs up (email code + password + phone)");
 const A = new Client();
@@ -55,6 +62,10 @@ const A2 = new Client(); r = await A2.auth({ action: "pin", email: "alan@arenacl
 ok(r.status === 200 && r.body.next === "done", "signs in again with email + password on a new device");
 r = await A2.auth({ action: "pin", email: "alan@arenaclub.com", pin: "wrong1234" });
 ok(r.status === 401, "wrong password is refused");
+
+r = await A.op({ op: "demoSetting", on: true }); cfg = await new Client().call(auth, "GET", { config: "1" });
+ok(r.status === 200 && cfg.body.demo === true, "admin turns the demo on for the sign-in page");
+await A.op({ op: "demoSetting", on: false });
 
 // 3. Import roster + invites
 step("3. Import the PL team and send invites");
