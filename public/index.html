@@ -1283,7 +1283,8 @@ select.field{padding-right:28px}
 .aband{background:var(--brand);display:flex;align-items:center;justify-content:center;gap:10px;padding:12px}
 .aband img{width:30px;height:30px;border-radius:50%}
 .aband span{font-weight:600;letter-spacing:.06em;color:var(--brandText);font-size:14px}
-.abody{padding:28px 32px 30px;display:grid;gap:16px}
+.abody{padding:28px 32px 30px;display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+.abody > *{min-width:0;max-width:100%} .abody .btn{white-space:normal;height:auto;min-height:46px;line-height:1.25;padding-top:10px;padding-bottom:10px}
 .abody h2{margin:0;font-size:24px;font-weight:600;letter-spacing:-.01em;line-height:1.25}
 .abody label{display:grid;gap:6px;font-weight:500;font-size:14px;color:var(--muted)}
 .abody .field{width:100%;height:42px;font-size:17px}
@@ -6848,7 +6849,7 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
         <div class="opts" role="radiogroup">${aInfo.channels.map(c => `<label class="opt"><input type="radio" name="ch" value="${c.id}" ${c.id === aChannel ? "checked" : ""}>${esc(c.label)}</label>`).join("")}</div>
         ${err}
         <button class="btn primary" id="aGo" ${dis}>Continue</button>
-        ${aInfo.canSetup && !aReset ? `<button class="btn" id="aSetup" type="button">First-time setup: create my password without a code</button>` : ""}
+        ${aInfo.canSetup && !aReset ? `<button class="btn" id="aSetup" type="button">First-time setup (no code)</button>` : ""}
         <div class="ahelp">By continuing, you agree to be contacted for verification. Carrier fees may apply.</div>`;
       if ($("aSetup")) $("aSetup").onclick = () => { aStep = "setup"; aErr = ""; renderAuth(); };
       b.querySelectorAll("input[name=ch]").forEach(r => r.onchange = () => { aChannel = r.value; });
