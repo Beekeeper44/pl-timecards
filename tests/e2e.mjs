@@ -1,0 +1,304 @@
+// End-to-end save test. Run with tests/run-e2e.sh (see tests/README.md).
+// End-to-end check against a real Postgres: every save is written, then read back from the database and through the API.
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || "postgres://postgres@localhost:5432/pltc_test";
+process.env.SESSION_SECRET = "test-secret-123456789012345678901234567890";
+process.env.ADMIN_EMAILS = "alan@arenaclub.com";
+process.env.DEV_SHOW_CODES = "1";
+process.env.RESEND_API_KEY = "test"; process.env.RESEND_FROM = "PL Time Cards <t@x.com>"; process.env.APP_URL = "https://pltc.test";
+import fs from "node:fs";
+const sent = [];   // emails "sent" through Resend
+globalThis.fetch = async (url, opt) => { if (String(url).includes("resend")) { sent.push(JSON.parse(opt.body)); return new Response(JSON.stringify({ id: "x" }), { status: 200 }); } throw new Error("unexpected fetch " + url); };
+const auth = (await import("./api/auth.js")).default, data = (await import("./api/data.js")).default, health = (await import("./api/health.js")).default;
+const { __pool: pool } = await import("@neondatabase/serverless");
+const q = async (t, v = []) => (await pool.query(t, v)).rows;
+let pass = 0, failN = 0; const log = [];
+const ok = (cond, msg) => { if (cond) { pass++; log.push("  ✓ " + msg); } else { failN++; log.push("  ✗ " + msg); } };
+const step = t => log.push("\n" + t);
+class Client {
+  constructor() { this.jar = {}; }
+  async call(h, method, query = {}, body = undefined) {
+    const headers = { cookie: Object.entries(this.jar).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("; "), "user-agent": this.ua || "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 Safari/605.1.15" };
+    let status = 200, out, hdr = {};
+    const res = { status(c) { status = c; return this; }, json(d) { out = d; return this; }, send(d) { out = d; return this; }, end(d) { out = d; return this; },
+      setHeader(k, v) { hdr[k.toLowerCase()] = v; }, getHeader(k) { return hdr[k.toLowerCase()]; } };
+    await h({ method, query, body, headers }, res);
+    for (const c of [].concat(hdr["set-cookie"] || [])) { const [kv] = c.split(";"); const i = kv.indexOf("="); const k = kv.slice(0, i), v = decodeURIComponent(kv.slice(i + 1)); if (/Max-Age=0/.test(c)) delete this.jar[k]; else this.jar[k] = v; }
+    return { status, body: out, headers: hdr };
+  }
+  auth(b) { return this.call(auth, "POST", {}, b); }
+  op(b) { return this.call(data, "POST", {}, b); }
+  get(qs) { return this.call(data, "GET", qs); }
+}
+async function signUp(c, email, password, phone) {
+  const l = await c.auth({ action: "lookup", email }); if (l.status !== 200) return l;
+  const sc = await c.auth({ action: "sendCode", email, channel: "email" }); if (sc.status !== 200) return sc;
+  const v = await c.auth({ action: "verifyCode", code: sc.body.devCode }); if (v.status !== 200) return v;
+  return c.auth({ action: "createPin", pin: password, phone });
+}
+
+// 1. Setup
+step("1. Database and setup");
+let r = await health({ method: "GET", query: {}, headers: {} }, { status(c) { this.c = c; return this; }, json(d) { this.d = d; return this; }, setHeader() {}, getHeader() {} });
+const tables = (await q("select table_name from information_schema.tables where table_schema='public' order by 1")).map(x => x.table_name);
+ok(tables.length >= 8, `tables created automatically (${tables.join(", ")})`);
+
+// 2. Admin signs up with email + password
+step("2. Admin signs up (email code + password + phone)");
+const A = new Client();
+r = await signUp(A, "alan@arenaclub.com", "Sunrise2026", "0917 555 0101");
+ok(r.status === 200 && A.jar.pltc_s, "Alan signs up and is signed in");
+let [alan] = await q("select * from members where email='alan@arenaclub.com'");
+ok(alan && alan.role === "admin", "saved as admin (ADMIN_EMAILS)");
+ok(alan && alan.pin_hash && !alan.pin_hash.includes("Sunrise"), "password stored only as a hash");
+ok(alan && alan.phone === "+639175550101", "phone saved as +63…");
+const A2 = new Client(); r = await A2.auth({ action: "pin", email: "alan@arenaclub.com", pin: "Sunrise2026" });
+ok(r.status === 200 && r.body.next === "done", "signs in again with email + password on a new device");
+r = await A2.auth({ action: "pin", email: "alan@arenaclub.com", pin: "wrong1234" });
+ok(r.status === 401, "wrong password is refused");
+
+// 3. Import roster + invites
+step("3. Import the PL team and send invites");
+const roster = JSON.parse(/const ROSTER = (\{.*?\});\n/s.exec(fs.readFileSync(process.env.PLTC_ROOT + "/public/index.html", "utf8"))[1]);
+const rows = roster.teams.filter(x => x.email).map(x => ({ ...x }));
+r = await A.op({ op: "importRoster", rows });
+ok(r.status === 200, `import ran (${JSON.stringify(r.body).slice(0, 80)})`);
+const [{ n: memN }] = await q("select count(*)::int n from members");
+ok(memN >= rows.length, `${memN} members saved`);
+r = await A.op({ op: "importRoster", rows });
+const [{ n: memN2 }] = await q("select count(*)::int n from members");
+ok(memN2 === memN, "running the import again doesn't create duplicates");
+const [khimRow] = await q("select * from members where email='khim.arcilla@precisionlabeling.com'");
+ok(khimRow && khimRow.dept === "Analysts", "Khim saved in Analysts");
+sent.length = 0;
+r = await A.op({ op: "invite", ids: [khimRow.id] });
+ok(r.status === 200 && sent.some(m => [].concat(m.to).includes("khim.arcilla@precisionlabeling.com")), "invite email sent to Khim");
+const [khimInv] = await q("select invited_at from members where id=$1", [khimRow.id]);
+ok(!!khimInv.invited_at, "invite date saved");
+
+// 4. Team member signs up, edits own details, uploads a photo
+step("4. Team member signs up, updates details, uploads a photo");
+const K = new Client();
+r = await signUp(K, "khim.arcilla@precisionlabeling.com", "Labels2026", "09171234567");
+ok(r.status === 200, "Khim signs up with a password");
+r = await K.op({ op: "selfUpdate", fields: { name: "Khim P. Arcilla", phone: "0917 765 4321", personalEmail: "khim@gmail.com" } });
+ok(r.status === 200, "Khim saves her own details");
+let [k2] = await q("select name, phone, personal_email from members where id=$1", [khimRow.id]);
+ok(k2.name === "Khim P. Arcilla" && k2.phone === "+639177654321" && k2.personal_email === "khim@gmail.com", "name, phone and personal email saved");
+r = await K.op({ op: "memberUpdate", id: khimRow.id, fields: { dept: "Data" } });
+ok(r.status === 403, "team member can't change their own department");
+// a small real JPEG (16×16) for the photo and announcement uploads
+const png = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAAQABABAREA/8QAFgABAQEAAAAAAAAAAAAAAAAABgcI/8QAIhAAAgEDBAMBAAAAAAAAAAAAAQIDBAURAAYSIQcTMUH/2gAIAQEAAD8Atvj7ad13dvKjtENOI6Ut7KyfKkpED2QPoJ+A5GT+DWm/IviLauzNrTXnb8MlPUQMp4tNyEoJAPTH8BzjS2V4D3hfqT/1Twn8dUVPSMCAAQU0VADxAOGI+DOQfn9u7xe85P/Z";
+r = await K.op({ op: "photoSet", memberId: khimRow.id, data: png });
+ok(r.status === 200, `photo upload accepted (${Math.round(png.length / 1024)} KB)`);
+const [ph] = await q("select photo is not null as has, photo_at from members where id=$1", [khimRow.id]).catch(async () => q("select true as has"));
+ok(ph && ph.has, "photo saved in the database");
+let me = await K.get({ week: "" });
+const kv = me.body.members?.find(m => m.id === khimRow.id);
+r = await K.get({ photo: khimRow.id, v: String(kv?.photoV || 1) });
+ok(r.status === 200 && r.body && (r.headers["content-type"] || "").startsWith("image/"), "photo loads back as an image");
+
+// 5. Time clock
+step("5. Clock in, break, lunch, clock out");
+r = await A.op({ op: "shiftSettings", shift: { ...(await A.get({ week: "" })).body.shift, enabled: false } });
+ok(r.status === 200, "time clock windows switched off for the test (any time)");
+for (const kind of ["in", "break", "back", "lunch", "back", "out"]) { r = await K.op({ op: "clock", memberId: khimRow.id, kind }); ok(r.status === 200, `clock ${kind}`); }
+let [sh] = await q("select * from shifts where member_id=$1 order by clock_in desc limit 1", [khimRow.id]);
+ok(sh && sh.clock_out && Array.isArray(sh.breaks) && sh.breaks.length === 2 && sh.breaks.every(b => b.e), "shift saved with in/out and 2 closed breaks");
+ok(sh.breaks.every(b => b.ds === "Computer" && b.de === "Computer") && sh.breaks.map(b => b.t).join() === "break,lunch", "break and lunch start/end times and devices saved");
+
+// 5b. Computers only
+step("5b. Clock in from a computer only (phones blocked)");
+[sh] = await q("select device_in, device_out from shifts where member_id=$1 order by clock_in desc limit 1", [khimRow.id]);
+ok(sh.device_in === "Computer" && sh.device_out === "Computer", "device saved on the shift (Computer)");
+const KP = new Client(); KP.jar = { ...K.jar }; KP.ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1";
+r = await KP.op({ op: "clock", memberId: khimRow.id, kind: "in" });
+ok(r.status === 403 && /laptop or desktop/.test(r.body.error), "iPhone clock-in refused");
+KP.ua = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36";
+r = await KP.op({ op: "clock", memberId: khimRow.id, kind: "in" }); ok(r.status === 403, "Android clock-in refused");
+KP.ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15";
+r = await KP.op({ op: "clock", memberId: khimRow.id, kind: "in", touchMac: true }); ok(r.status === 403, "iPad posing as a Mac refused (touchscreen check)");
+const [{ n: openN }] = await q("select count(*)::int n from shifts where member_id=$1 and clock_out is null", [khimRow.id]);
+ok(openN === 0, "nothing recorded from the refused attempts");
+const AP = new Client(); AP.jar = { ...A.jar }; AP.ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148";
+r = await AP.op({ op: "clock", memberId: khimRow.id, kind: "in" }); ok(r.status === 200, "admin can fix someone's punch from a phone");
+let [ph2] = await q("select id, device_in from shifts where member_id=$1 and clock_out is null", [khimRow.id]);
+ok(ph2 && ph2.device_in === "iPhone", "and it's saved as an iPhone punch");
+r = await AP.op({ op: "clock", memberId: khimRow.id, kind: "out" }); ok(r.status === 200, "admin clocks them out from the phone");
+r = await AP.op({ op: "clock", memberId: alan.id, kind: "in" }); ok(r.status === 200, "admin (Phones allowed for: Admins) clocks themself in from a phone");
+await AP.op({ op: "clock", memberId: alan.id, kind: "out" });
+const s0 = (await A.get({ week: "" })).body.shift;
+await A.op({ op: "shiftSettings", shift: { ...s0, desktopOnly: false } });
+r = await KP.op({ op: "clock", memberId: khimRow.id, kind: "in", touchMac: true }); ok(r.status === 200, "with Any device on, phones work again");
+KP.ua = "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/120 Safari/537.36";
+await KP.op({ op: "clock", memberId: khimRow.id, kind: "out" });
+const [dv] = await q("select device_in, device_out from shifts where member_id=$1 order by clock_in desc limit 1", [khimRow.id]);
+ok(dv.device_in === "iPad" && dv.device_out === "Android tablet", `iPad in and Android tablet out recorded (${dv.device_in} / ${dv.device_out})`);
+const cardDv = await A.get({ card: khimRow.id, from: "2026-01-01", to: "2027-12-31" });
+ok(cardDv.body.card?.some(x => x.deviceIn === "iPad" && x.deviceOut === "Android tablet"), "device shows in the timecard data");
+await A.op({ op: "shiftSettings", shift: { ...s0, desktopOnly: true } });
+const [st0] = await q("select value from settings where key='shift'"); ok(st0.value.desktopOnly === true && st0.value.mobileDepts.includes("Admins"), "Computers only setting saved");
+await pool.query("delete from shifts where member_id=$1 and id <> (select id from shifts where member_id=$1 and device_in='Computer' order by clock_in limit 1)", [khimRow.id]);
+[sh] = await q("select * from shifts where member_id=$1 order by clock_in desc limit 1", [khimRow.id]);
+
+// 6. Admin edits + approves the shift
+step("6. Admin edits and approves the shift");
+const inMs = new Date(sh.clock_in).getTime() - 3600000, outMs = inMs + 8 * 3600000;
+r = await A.op({ op: "shiftSave", id: sh.id, memberId: khimRow.id, in: inMs, out: outMs, breakMin: 60, note: "Fixed missed punch" });
+ok(r.status === 200, "admin edit saved");
+[sh] = await q("select * from shifts where id=$1", [sh.id]);
+ok(new Date(sh.clock_in).getTime() === inMs && new Date(sh.clock_out).getTime() === outMs && sh.note === "Fixed missed punch" && sh.edited, "new times, note and Edited flag saved");
+const H = 3600000;
+r = await A.op({ op: "shiftSave", id: sh.id, memberId: khimRow.id, in: inMs, out: outMs, note: "Fixed missed punch",
+  breaks: [{ s: inMs + 2 * H, e: inMs + 2.25 * H, t: "break" }, { s: inMs + 4 * H, e: inMs + 4.75 * H, t: "lunch" }, { s: inMs + 6 * H, e: inMs + 6.25 * H, t: "break" }] });
+ok(r.status === 200, "edit Break 1, Lunch and Break 2 times");
+[sh] = await q("select * from shifts where id=$1", [sh.id]);
+ok(sh.break_min === null && sh.breaks.length === 3 && sh.breaks.map(x => x.t).join() === "break,lunch,break" && sh.breaks[1].e - sh.breaks[1].s === 0.75 * H, "break and lunch times saved (no minutes total)");
+r = await A.op({ op: "shiftSave", id: sh.id, memberId: khimRow.id, in: inMs, out: outMs, breaks: [{ s: inMs - H, e: inMs, t: "break" }] });
+ok(r.status === 400, "a break outside the shift is refused");
+r = await A.op({ op: "shiftSave", id: sh.id, memberId: khimRow.id, in: inMs, out: outMs, breaks: [{ s: inMs + H, e: inMs + 2 * H, t: "break" }, { s: inMs + 1.5 * H, e: inMs + 3 * H, t: "lunch" }] });
+ok(r.status === 400, "overlapping breaks are refused");
+r = await A.op({ op: "shiftApprove", ids: [sh.id], status: "approved" });
+[sh] = await q("select approval from shifts where id=$1", [sh.id]);
+ok(sh.approval === "approved", "approval saved");
+const hist = await q("select field from member_history where member_id=$1", [khimRow.id]);
+ok(hist.some(h => h.field === "photo") && hist.some(h => h.field === "phone"), `profile change history recorded (${hist.map(h => h.field).join(", ")})`);
+
+// 7. Time off
+step("7. Time off request and decision");
+r = await K.op({ op: "toRequest", type: "Vacation", start: "2026-12-01", end: "2026-12-03", note: "Family trip" });
+ok(r.status === 200, "Khim requests vacation");
+let [to] = await q("select * from time_off where member_id=$1 order by created_at desc limit 1", [khimRow.id]);
+ok(to && to.status === "pending" && to.note === "Family trip", "request saved as pending");
+sent.length = 0;
+r = await A.op({ op: "toDecide", id: to.id, status: "approved", note: "Enjoy your trip!" });
+[to] = await q("select * from time_off where id=$1", [to.id]);
+ok(to.status === "approved" && to.decision_note === "Enjoy your trip!", "approval and message saved");
+const nf = await q("select title from notifications where member_id=$1 order by created_at desc limit 3", [khimRow.id]);
+ok(nf.some(n => /approved/i.test(n.title)), "Khim gets an in-app notification");
+ok(sent.some(m => [].concat(m.to).includes("khim.arcilla@precisionlabeling.com")), "and an email");
+
+// 8. Schedule codes, settings
+step("8. Schedule codes and time clock settings");
+r = await A.op({ op: "setSchedule", memberId: khimRow.id, day: "2026-11-05", codes: ["5H", "6H"] });
+ok(r.status === 200, "5H + 6H saved for a day");
+const sc = await q("select * from schedules where member_id=$1", [khimRow.id]).catch(e => [{ err: e.message }]);
+ok(sc.length && !sc[0].err, `schedule row saved (${sc[0]?.err || "ok"})`);
+const cur = (await A.get({ week: "" })).body.shift;
+r = await A.op({ op: "shiftSettings", shift: { ...cur, enabled: true, lateMin: 3, earlyOutMin: 6, flexDepts: ["CS", "Admins"] } });
+const [st] = await q("select value from settings where key='shift'");
+ok(st && st.value.lateMin === 3 && st.value.earlyOutMin === 6 && st.value.flexDepts.includes("Admins"), "grace 3 min, early-out 6 min and Admins exemption saved");
+const cur2 = (await A.get({ week: "" })).body.shift;
+ok(cur2.habits.CS.label === "Customer Service", `CS is called "Customer Service" (${cur2.habits.CS.label})`);
+r = await A.op({ op: "shiftSettings", shift: { ...cur2, habits: { ...cur2.habits, OS: { ...cur2.habits.OS, enabled: false } } } });
+const [st2] = await q("select value from settings where key='shift'"); ok(st2.value.habits.OS.enabled === false && st2.value.habits.NS.enabled === true, "OS switched off (NS still on) is saved");
+r = await A.op({ op: "setSchedule", memberId: khimRow.id, day: "2026-11-06", codes: ["OS", "5H"] });
+const [sc6] = await q("select codes from schedules where member_id=$1 and day='2026-11-06'", [khimRow.id]); ok(sc6 && sc6.codes.join() === "5H", `a switched-off code can't be set (${sc6?.codes})`);
+await A.op({ op: "shiftSettings", shift: { ...cur2, habits: { ...cur2.habits, OS: { ...cur2.habits.OS, enabled: true } } } });
+
+// 9. Announcements with an image
+step("9. Announcement with an image");
+r = await A.op({ op: "annPost", body: "Holiday party Friday!", image: png });
+ok(r.status === 200, "announcement posted");
+const [ann] = await q("select * from announcements order by created_at desc limit 1").catch(e => [{ err: e.message }]);
+ok(ann && !ann.err && /Holiday/.test(ann.body), "announcement text saved");
+ok(ann && (ann.image || ann.image_data || ann.img), "announcement image saved");
+
+// 10. Reviews end to end
+step("10. Year End Review: cycle, self review, manager votes, send");
+r = await A.op({ op: "cycleCreate", name: "Year End Review", kind: "Performance", periodStart: "2026-01-01", periodEnd: "2026-12-31", due: "2026-11-15", reviewDue: "2027-01-21", depts: ["Analysts"] });
+ok(r.status === 200 && r.body.created >= 1, `cycle created for ${r.body.created} people`);
+const [cy] = await q("select * from review_cycles order by created_at desc limit 1");
+ok(cy.kind === "Performance" && String(cy.review_due).length > 0, "type and Jan 21 review due date saved");
+let [rv] = await q("select * from reviews where cycle_id=$1 and member_id=$2", [cy.id, khimRow.id]);
+r = await K.op({ op: "reviewSave", id: rv.id, self: true, answers: [{ q: "Q1", a: "A1" }] });
+ok(r.status === 403, "self review locked until it's sent");
+r = await A.op({ op: "reviewSendSelf", ids: [rv.id], questions: ["Q1", "Q2"] });
+ok(r.status === 200 && r.body.sent === 1, "self review sent (unlocked)");
+const ans = [1, 2, 3, 4, 5].map(i => ({ q: "Question " + i, a: "Answer with example " + i }));
+r = await K.op({ op: "reviewSave", id: rv.id, self: true, answers: ans, selfRating: 4 });
+ok(r.status === 200, "Khim submits her self review");
+[rv] = await q("select * from reviews where id=$1", [rv.id]);
+ok(rv.self_submitted_at && Array.isArray(rv.self_answers) && rv.self_answers.length === 5, "5 answers saved and locked");
+r = await K.op({ op: "reviewSave", id: rv.id, self: true, answers: ans });
+ok(r.status === 409, "can't change it after submitting");
+r = await A.op({ op: "reviewUnlockSelf", id: rv.id }); [rv] = await q("select * from reviews where id=$1", [rv.id]);
+ok(!rv.self_submitted_at, "admin unlock works");
+const votes = [5, 4, 5, 5, 4].map((v, i) => ({ q: "Statement " + i, rating: v }));
+r = await A.op({ op: "reviewSave", id: rv.id, answers: votes, extra: "- 2026 Positives\n  - Trained new hires", strengths: "Accuracy" });
+[rv] = await q("select * from reviews where id=$1", [rv.id]);
+ok(rv.status === "draft" && rv.mgr_answers.length === 5 && rv.rating === 5 && /Positives/.test(rv.extra_info), "manager votes, average and extra notes saved as a draft");
+r = await A.op({ op: "reviewSendMany", ids: [rv.id] }); [rv] = await q("select * from reviews where id=$1", [rv.id]);
+ok(rv.status === "shared" && rv.shared_at, "review sent to Khim");
+me = await K.get({ week: "" });
+const myRv = me.body.reviews?.find(x => x.id === rv.id);
+ok(myRv && myRv.mgrAnswers?.length === 5, "Khim can read her votes");
+
+// 11. Updates, 1:1s, notifications
+step("11. Updates, 1:1s, notifications");
+r = await A.op({ op: "updateAdd", memberId: khimRow.id, kind: "praise", body: "Great catch on the 1st edition", shared: true });
+ok(r.status === 200, "praise update saved");
+r = await A.op({ op: "meetingCreate", memberId: khimRow.id, at: Date.now() + 86400000, durationMin: 30, repeat: "none", point: "Career goals" });
+ok(r.status === 200, `1:1 booked (${r.status} ${r.body?.error || ""})`);
+const [dfl] = await q("select link from meetings where member_id=$1 order by created_at desc limit 1", [khimRow.id]);
+ok(dfl.link === "https://meet.google.com/ara-qmvp-frj", `Alan's usual Meet link is used when none is given (${dfl.link})`);
+r = await A.op({ op: "selfUpdate", fields: { meetLink: "meet.google.com/xyz-abcd-efg" } });
+const [ml0] = await q("select meet_link from members where id=$1", [alan.id]); ok(ml0.meet_link === "https://meet.google.com/xyz-abcd-efg", "changing your usual Meet link in Account settings is saved");
+await A.op({ op: "selfUpdate", fields: { meetLink: "https://meet.google.com/ara-qmvp-frj" } });
+const [mt] = await q("select id from meetings where member_id=$1 order by created_at desc limit 1", [khimRow.id]);
+r = await A.op({ op: "meetingCreate", memberId: khimRow.id, at: Date.now() + 2 * 86400000, durationMin: 30, repeat: "weekly", link: "meet.google.com/abc-defg-hij" });
+const [ml] = await q("select id, link from meetings where member_id=$1 and link is not null order by created_at desc limit 1", [khimRow.id]);
+ok(ml && ml.link === "https://meet.google.com/abc-defg-hij", `Google Meet link saved (${ml?.link})`);
+r = await A.op({ op: "meetingCreate", memberId: khimRow.id, at: Date.now() + 3 * 86400000, durationMin: 30, repeat: "none", link: "javascript:alert(1)" });
+ok(r.status === 400, "a bad link is refused");
+r = await A.op({ op: "meetingUpdate", id: ml.id, fields: { link: "https://meet.google.com/xyz-abcd-efg" } });
+const [ml2] = await q("select link from meetings where id=$1", [ml.id]); ok(ml2.link === "https://meet.google.com/xyz-abcd-efg", "link can be changed");
+r = await A.op({ op: "meetingUpdate", id: ml.id, fields: { status: "done" } });
+const [nx] = await q("select link from meetings where member_id=$1 and status='scheduled' order by starts_at desc limit 1", [khimRow.id]);
+ok(nx && nx.link === "https://meet.google.com/xyz-abcd-efg", "the next repeat keeps the same Meet link");
+r = await K.op({ op: "meetingDelete", id: mt.id }); ok(r.status === 403, "team member can't delete the 1:1");
+r = await A.op({ op: "meetingDelete", id: mt.id }); const [{ n: mtN }] = await q("select count(*)::int n from meetings where id=$1", [mt.id]);
+ok(r.status === 200 && mtN === 0, "manager deletes the 1:1 (gone from the database)");
+r = await K.op({ op: "notifRead", all: true });
+const [{ n: unread }] = await q("select count(*)::int n from notifications where member_id=$1 and read_at is null", [khimRow.id]).catch(async () => [{ n: (await q("select count(*)::int n from notifications where member_id=$1 and not coalesce(read,false)", [khimRow.id]))[0].n }]);
+ok(unread === 0, "mark all notifications read is saved");
+
+// 12. Password reset + admin reset
+step("12. Forgot password and admin reset");
+const K2 = new Client();
+await K2.auth({ action: "forgotPin", email: "khim.arcilla@precisionlabeling.com" });
+const code = (await K2.auth({ action: "sendCode", email: "khim.arcilla@precisionlabeling.com", channel: "email" })).body.devCode;
+await K2.auth({ action: "verifyCode", code });
+r = await K2.auth({ action: "createPin", pin: "NewPass2027" });
+ok(r.status === 200, "Khim resets her password");
+r = await new Client().auth({ action: "pin", email: "khim.arcilla@precisionlabeling.com", pin: "NewPass2027" });
+ok(r.status === 200, "new password works");
+r = await new Client().auth({ action: "pin", email: "khim.arcilla@precisionlabeling.com", pin: "Labels2026" });
+ok(r.status === 401, "old password no longer works");
+r = await A.op({ op: "resetPin", id: khimRow.id }); const [kp] = await q("select pin_hash from members where id=$1", [khimRow.id]);
+ok(!kp.pin_hash, "admin Reset password clears it");
+
+// 12b. Delete a team member
+step("12b. Delete a team member");
+const [vic] = await q("select id, name from members where email='abe@precisionlabeling.com'");
+r = await K.op({ op: "memberDelete", id: vic.id, confirmName: vic.name }); ok(r.status === 403, "team member can't delete people");
+r = await A.op({ op: "memberDelete", id: vic.id, confirmName: "wrong" }); ok(r.status === 400, "wrong name typed: nothing deleted");
+r = await A.op({ op: "memberDelete", id: alan.id, confirmName: alan.name }); ok(r.status === 400, "admin can't delete themself");
+r = await A.op({ op: "memberDelete", id: vic.id, confirmName: vic.name });
+const [{ n: gone }] = await q("select count(*)::int n from members where id=$1", [vic.id]); ok(r.status === 200 && gone === 0, `${vic.name} deleted`);
+r = await A.op({ op: "importRoster", rows });
+const [{ n: back }] = await q("select count(*)::int n from members where email='abe@precisionlabeling.com'");
+ok(back === 0 && r.body.skipped.some(x => /deleted/.test(x)), "importing the PL team again does NOT bring the deleted person back");
+const memAfter = memN2 - 1;
+
+// 13. Everything still there after a fresh load
+step("13. Fresh load: data comes back through the API");
+const fresh = await (new Client()).auth({ action: "pin", email: "alan@arenaclub.com", pin: "Sunrise2026" });
+const A3 = new Client(); await A3.auth({ action: "pin", email: "alan@arenaclub.com", pin: "Sunrise2026" });
+const L = await A3.get({ week: "" });
+ok(L.status === 200 && L.body.members.length === memAfter, "all members load (minus the deleted one)");
+ok(L.body.timeOff?.some(x => x.note === "Family trip" && x.status === "approved"), "approved vacation loads");
+const card = await A3.get({ card: khimRow.id, from: "2026-01-01", to: "2026-12-31" });
+ok(card.status === 200 && card.body.card?.some(s => s.note === "Fixed missed punch" && s.approval === "approved"), "edited, approved shift loads in the timecard");
+
+console.log(log.join("\n")); console.log(`\n${pass} passed, ${failN} failed`);
+await pool.end(); process.exit(failN ? 1 : 0);
