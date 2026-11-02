@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   const out = {
     database: "not checked",
     sessionSecret: !!process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32,
-    adminEmails: (process.env.ADMIN_EMAILS || "").split(",").map(s => s.trim()).filter(Boolean).length,
+    adminEmails: (process.env.ADMIN_EMAILS || "alan@arenaclub.com").split(",").map(s => s.trim()).filter(Boolean).length,   // alan@arenaclub.com works even without ADMIN_EMAILS
     textAndCallCodes: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SID),
     emailCodes: !!(process.env.RESEND_API_KEY && process.env.RESEND_FROM),
     metabaseEmbedding: !!(MB_HOST() && process.env.METABASE_SECRET_KEY),

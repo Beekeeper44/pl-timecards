@@ -49,6 +49,10 @@ ok(cfg.status === 200 && cfg.body.demo === false, "Explore the demo is off until
 r = await new Client().auth({ action: "lookup", email: "someone@precisionlabeling.com" });
 ok(r.status === 404 && /isn’t set up yet/.test(r.body.error), "before any admin exists, the sign-in page explains how to set up");
 
+r = await new Client().auth({ action: "setup", email: "alan@arenaclub.com", key: "wrongkey", pin: "Sunrise2026", phone: "+639175550101" });
+ok(r.status === 401, "first-time setup needs the right setup key");
+r = await new Client().auth({ action: "lookup", email: "alan@arenaclub.com" }); ok(r.body.canSetup === true, "first-time setup is offered before any admin has a password");
+
 // 2. Admin signs up with email + password
 step("2. Admin signs up (email code + password + phone)");
 const A = new Client();
@@ -66,6 +70,9 @@ ok(r.status === 401, "wrong password is refused");
 r = await A.op({ op: "demoSetting", on: true }); cfg = await new Client().call(auth, "GET", { config: "1" });
 ok(r.status === 200 && cfg.body.demo === true, "admin turns the demo on for the sign-in page");
 await A.op({ op: "demoSetting", on: false });
+
+r = await new Client().auth({ action: "setup", email: "alan@arenaclub.com", key: process.env.SESSION_SECRET.slice(0, 8), pin: "Hacker2026", phone: "+639170000000" });
+ok(r.status === 403, "after the admin has a password, first-time setup is closed (even with the key)");
 
 // 3. Import roster + invites
 step("3. Import the PL team and send invites");
@@ -85,6 +92,20 @@ r = await A.op({ op: "invite", ids: [khimRow.id] });
 ok(r.status === 200 && sent.some(m => [].concat(m.to).includes("khim.arcilla@precisionlabeling.com")), "invite email sent to Khim");
 const [khimInv] = await q("select invited_at from members where id=$1", [khimRow.id]);
 ok(!!khimInv.invited_at, "invite date saved");
+
+// 3b. Personal sign-up link (no code needed)
+step("3b. Personal sign-up link: straight to creating a password");
+const [ped] = await q("select id, name from members where email='ped@precisionlabeling.com'");
+r = await A.op({ op: "inviteLinks", ids: [ped.id] });
+const tok = new URL(r.body.links[0].link).searchParams.get("join");
+ok(r.status === 200 && tok, "admin copies a personal sign-up link");
+const P1 = new Client(); r = await P1.auth({ action: "join", token: tok });
+ok(r.status === 200 && r.body.next === "createPin", "opening the link goes straight to create a password");
+r = await P1.auth({ action: "createPin", pin: "Grading2026", phone: "+63 917 222 3333" });
+ok(r.status === 200 && P1.jar.pltc_s, "they create a password and are signed in");
+r = await new Client().auth({ action: "join", token: tok }); ok(r.status === 200 && r.body.next === "signin", "the same link afterwards only offers sign in");
+r = await new Client().auth({ action: "join", token: tok.slice(0, -3) + "abc" }); ok(r.status === 400, "a changed or fake link is refused");
+r = await new Client().auth({ action: "pin", email: "ped@precisionlabeling.com", pin: "Grading2026" }); ok(r.status === 200, "they can sign in with email + password");
 
 // 4. Team member signs up, edits own details, uploads a photo
 step("4. Team member signs up, updates details, uploads a photo");

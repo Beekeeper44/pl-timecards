@@ -191,3 +191,13 @@ My Time › Timecards has a **My timecard | Team timecards** switch. Team timeca
 ## First sign-in and demo mode
 - **First admin:** emails in `ADMIN_EMAILS` become admins the first time they sign in. If `ADMIN_EMAILS` isn’t set, `alan@arenaclub.com` can still set the app up. Before any admin exists, the sign-in page explains this instead of “we don’t recognize that email”.
 - **Demo mode is off by default.** The sign-in page has no “Explore the demo” button and `?demo` links show “The demo is turned off”. Admins can switch it on in **Team settings › Demo mode**. (The published preview link is always the demo.)
+
+
+## Personal sign-up links
+Team settings › Invite your team: **✉ Send invites** emails each person a **personal link**, **🔗 Link** copies one person’s link, and **🔗 Copy links (N)** copies “Name — link” for everyone ticked (to paste in a chat). Opening the link goes straight to **Create your password** (+ mobile number) with no code needed; the link is signed with `SESSION_SECRET`, works for 14 days, and once they’ve signed up it only offers normal sign in. Treat links like keys: send each one only to that person.
+
+The first time an admin signs in to an empty app, the whole PL list (125 people, minus anyone deleted) is added automatically.
+
+
+## First-time setup without email
+If email codes can’t be sent yet (Resend not set up), the first admin can still get in: enter your admin email, then **First-time setup: create my password without a code**, type the **setup key** (the first 8 characters of `SESSION_SECRET` in Vercel), and create your password + mobile number. It works only for an admin email and only until the first admin has a password; after that it’s closed and everyone uses the normal sign-in. When sending a code fails, the message now says why (e.g. the RESEND_FROM domain isn’t verified in Resend).

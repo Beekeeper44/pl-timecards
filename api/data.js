@@ -1,4 +1,4 @@
-import { earlyOutBy, isPhoneReq, deviceOf, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
+import { earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
 
 const dayOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || "");
 // Meeting link: an https web address (Google Meet, Zoom, Teams…); "meet.google.com/abc-defg-hij" gets https:// added.
@@ -676,6 +676,16 @@ export default async function handler(req, res) {
           on conflict (key) do update set value = excluded.value, updated_at = now()`;
         return send(res, 200, { ok: true });
       }
+      case "inviteLinks": {
+        // Copy-able personal sign-up links (for text or chat). Marks them as invited.
+        const ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 300);
+        const base = (process.env.APP_URL || `https://${req.headers["x-forwarded-host"] || req.headers.host}`).replace(/\/+$/, "");
+        const rows = await sql`select id, name, email, pin_hash from members where id = any(${ids}::uuid[]) and active and email is not null`;
+        const links = rows.map(m => ({ id: m.id, name: m.name, email: m.email, signedUp: !!m.pin_hash, link: `${base}/?join=${encodeURIComponent(inviteToken(m))}` }));
+        const fresh = rows.filter(m => !m.pin_hash).map(m => m.id);
+        if (fresh.length) await sql`update members set invited_at = coalesce(invited_at, now()) where id = any(${fresh}::uuid[])`;
+        return send(res, 200, { ok: true, links });
+      }
       case "invite": {
         // Email sign-up invites. Link opens the app with their email filled in.
         const ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, 300);
@@ -683,7 +693,7 @@ export default async function handler(req, res) {
         const rows = await sql`select id, name, email from members where id = any(${ids}::uuid[]) and active and email is not null`;
         const sent = [], failed = [];
         for (const m of rows) {
-          try { await sendInvite(m, `${base}/?email=${encodeURIComponent(m.email)}`, me.name); sent.push(m.id); }
+          try { await sendInvite(m, `${base}/?join=${encodeURIComponent(inviteToken(m))}`, me.name); sent.push(m.id); }
           catch (e) { failed.push({ name: m.name, error: e.message }); if (e.status === 400) break; }
         }
         if (sent.length) await sql`update members set invited_at = now() where id = any(${sent}::uuid[])`;

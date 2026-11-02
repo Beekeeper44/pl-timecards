@@ -215,6 +215,9 @@ const SECRET = () => {
   return s;
 };
 const b64u = b => Buffer.from(b).toString("base64url");
+// Personal sign-up link: proves the person by the link itself (sent to their work email or handed over by an admin), good for 14 days
+// and only until they've created a password. Admin "Reset password" makes a fresh one work again.
+export const inviteToken = m => sign({ inv: m.id, em: String(m.email || "").toLowerCase(), exp: Date.now() + 14 * 86400e3 });
 export function sign(payload) {
   const p = b64u(JSON.stringify(payload));
   const sig = crypto.createHmac("sha256", SECRET()).update(p).digest("base64url");
@@ -486,11 +489,11 @@ export function matchMember(name, members) {
 export async function sendInvite(m, link, fromName) {
   if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) throw Object.assign(new Error("Email isn’t set up yet: add RESEND_API_KEY and RESEND_FROM in Vercel."), { status: 400 });
   const first = (m.name || "").split(" ")[0];
-  const text = `Hi ${first},\n\n${fromName} invited you to PL Time Cards, where you clock in and out, request time off and see your hours.\n\nSign up in a minute:\n1. Open ${link}\n2. Your work email (${m.email}) is already filled in. Tap Continue.\n3. Enter the 6-digit code we send you.\n4. Create a password (you'll use it with your email to sign in from now on) and add your mobile number.\n\nSee you there,\nPrecision Labeling`;
+  const text = `Hi ${first},\n\n${fromName} invited you to PL Time Cards, where you clock in and out, request time off and see your hours.\n\nSign up in a minute:\n1. Open ${link}\n   (This link is just for you, ${m.email}. It works for 14 days.)\n2. Create a password (you'll use it with your email to sign in from now on) and add your mobile number.\n\nSee you there,\nPrecision Labeling`;
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#111;max-width:520px">
     <p>Hi ${first},</p><p><b>${fromName}</b> invited you to <b>PL Time Cards</b>, where you clock in and out, request time off and see your hours.</p>
     <p><a href="${link}" style="display:inline-block;background:#1f9d55;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Sign up</a></p>
-    <ol style="padding-left:18px"><li>Your work email (<b>${m.email}</b>) is already filled in. Tap <b>Continue</b>.</li><li>Enter the 6-digit code we send you.</li><li>Create a password (you’ll use it with your email to sign in from now on) and add your mobile number.</li></ol>
+    <ol style="padding-left:18px"><li>Tap <b>Sign up</b>. This link is just for you (${m.email}).</li><li>Create a password (you’ll use it with your email to sign in from now on) and add your mobile number.</li></ol>
     <p style="color:#666;font-size:13px">If the button doesn’t work, open ${link}</p></div>`;
   const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: process.env.RESEND_FROM, to: m.email, subject: `${fromName} invited you to PL Time Cards`, text, html }) });

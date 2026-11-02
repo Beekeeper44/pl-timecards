@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {
   sql, ensureSchema, body, send, fail, sign, unsign, cookies, setCookie, clearCookie,
   SESSION_HOURS, TRUST_DAYS, hashPin, newSalt, pinMatches, sha, sixDigits,
@@ -36,6 +37,13 @@ async function findMember(email) {
     on conflict (email) do update set email = excluded.email returning *`;
   return created;
 }
+// First-time setup is open only for admin-list emails while no admin has created a password yet.
+async function setupOpen(m) {
+  const admins = (process.env.ADMIN_EMAILS || "alan@arenaclub.com").split(",").map(normEmail).filter(Boolean);
+  if (!admins.includes(normEmail(m.email)) || m.pin_hash) return false;
+  const [{ n }] = await sql`select count(*)::int n from members where role = 'admin' and pin_hash is not null`;
+  return n === 0 && String(process.env.SESSION_SECRET || "").length >= 32;
+}
 const channelsFor = m => [
   ...(m.phone ? [{ id: "sms", label: `Text ${maskPhone(m.phone)}` }, { id: "call", label: `Call ${maskPhone(m.phone)}` }] : []),
   { id: "email", label: `Email ${maskEmail(m.email)}` }
@@ -67,7 +75,7 @@ export default async function handler(req, res) {
             : "PL Time Cards isn’t set up yet. The first admin signs in with an email listed in ADMIN_EMAILS (Vercel › Settings › Environment Variables), then redeploys.");
         }
         clearCookie(res, "pltc_p");
-        return send(res, 200, { name: m.name, email: m.email, hasPin: !!m.pin_hash, hasPhone: !!m.phone, channels: channelsFor(m) });
+        return send(res, 200, { name: m.name, email: m.email, hasPin: !!m.pin_hash, hasPhone: !!m.phone, channels: channelsFor(m), canSetup: await setupOpen(m) });
       }
 
       case "pin": {
@@ -125,6 +133,32 @@ export default async function handler(req, res) {
         return send(res, 200, { channel: ch.id, sentTo: to, expiresMin: CODE_MIN, ...(devCodes() ? { devCode: code } : {}) });
       }
 
+      case "setup": {
+        // First-time setup without an email code: only for an admin email, only before any admin has a password,
+        // and only with the setup key (the first 8 characters of SESSION_SECRET, which only whoever set up Vercel has).
+        const email = normEmail(b.email);
+        const m = await findMember(email);
+        if (!m || !m.active || !(await setupOpen(m))) return fail(res, 403, "First-time setup is closed. Sign in with your email and the code we send you.");
+        const want = String(process.env.SESSION_SECRET || "").slice(0, 8), got = String(b.key || "").trim();
+        if (want.length < 8 || got.length !== 8 || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want))) return fail(res, 401, "That setup key isn’t right. It’s the first 8 characters of SESSION_SECRET in Vercel.");
+        const pin = String(b.pin || ""); const bad = pwProblem(pin, m.email); if (bad) return fail(res, 400, bad);
+        const phone = normPhone(b.phone); if (!m.phone && (!phone || !phoneOk(phone))) return fail(res, 400, "Enter your mobile number with country code, like +63 917 123 4567.");
+        const salt = newSalt();
+        const [u] = await sql`update members set pin_hash = ${hashPin(pin, salt)}, pin_salt = ${salt}, pin_fails = 0, pin_lock_until = null, role = 'admin',
+          phone = coalesce(phone, ${phone || null}) where id = ${m.id} returning *`;
+        startSession(res, u);
+        return send(res, 200, { next: "done" });
+      }
+      case "join": {
+        // Opened from a personal sign-up link: no code needed, go straight to creating a password (+ mobile number).
+        const t = unsign(String(b.token || ""));
+        if (!t || !t.inv) return fail(res, 400, "This sign-up link isn’t valid or has expired. Ask your lead for a new one.");
+        const [m] = await sql`select * from members where id = ${t.inv}`;
+        if (!m || !m.active || String(m.email || "").toLowerCase() !== t.em) return fail(res, 400, "This sign-up link isn’t valid any more. Ask your lead for a new one.");
+        if (m.pin_hash) return send(res, 200, { next: "signin", email: m.email, name: m.name });   // already signed up: just sign in
+        setPending(res, { uid: m.id, stage: "verified", reset: false });
+        return send(res, 200, { next: "createPin", email: m.email, name: m.name, hasPhone: !!m.phone });
+      }
       case "verifyCode": {
         const p = pending(req);
         if (!p || p.stage !== "code_sent") return fail(res, 400, "Your sign-in timed out. Start again with your email.");
@@ -202,7 +236,9 @@ export default async function handler(req, res) {
     console.error(e);
     const setup = setupMessage(e);
     if (setup) return fail(res, 500, setup);
-    const msg = /twilio_send|resend/.test(e.message) ? "Couldn’t send the code. Check the number or email on the roster, or try another method." : "Something went wrong. Try again.";
+    const rs = /resend (\d+)\s*(.*)/.exec(e.message || "");
+    const why = rs ? (rs[1] === "401" || rs[1] === "403" ? (/domain/i.test(rs[2]) ? " Email isn’t set up: the RESEND_FROM domain isn’t verified in Resend." : " Email isn’t set up: check RESEND_API_KEY and that the RESEND_FROM domain is verified in Resend.") : rs[1] === "422" ? " Email isn’t set up: RESEND_FROM must look like PL Time Cards <timecards@yourdomain.com> on a verified domain." : "") : "";
+    const msg = /twilio_send|resend/.test(e.message) ? `Couldn’t send the code.${why || " Check the number or email on the roster, or try another method."}` : "Something went wrong. Try again.";
     return fail(res, 500, msg);
   }
 }

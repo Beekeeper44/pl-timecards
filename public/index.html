@@ -2133,7 +2133,7 @@ dialog::backdrop{background:var(--scrim)}
     <h2 id="naTitle">Add a note</h2>
     <div class="note cfbody" id="naBody"></div>
     <textarea class="field ta" id="naInput" rows="3" maxlength="200"></textarea>
-    <div class="btns"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn dangerfill" value="ok">Don’t approve</button></div>
+    <div class="btns"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn dangerfill" value="ok" id="naOk">Don’t approve</button></div>
   </form>
 </dialog>
 <dialog id="dlgTypeConfirm">
@@ -2482,6 +2482,14 @@ dialog::backdrop{background:var(--scrim)}
 
   // ---------- state ----------
   let mySched = [], schedToday = {}, me = null, members = [], live = [], weekShifts = [], myWeek = [], timeOff = [], today = null, skew = 0;
+  let autoImportTried = false;
+  async function autoImportTeam() {
+    const gone = new Set(deletedPeople.map(x => String(x.email || "").toLowerCase()));
+    const rows = ROSTER.teams.filter(r => r.email && !gone.has(r.email.toLowerCase())).map(r => r.manager === "Alan Bailey" ? { ...r, managerIsMe: me.name.startsWith("Alan") } : r);
+    if (!rows.length) return;
+    try { const r = await dataCall({ op: "importRoster", rows }); toast(`Set up your team: ${r.added} people added from the PL list. Next: Team settings › Invite your team.`); await load(); }
+    catch (e) { toast(`Couldn’t add the PL team automatically: ${e.message}. Use Team settings › Import the PL team.`); }
+  }
   let deletedPeople = [];   // [{ email, name }] people an admin deleted: kept out of the PL import and Metrics
   const isDeletedName = n => deletedPeople.some(x => x.name && x.name.trim().toLowerCase() === String(n || "").trim().toLowerCase());
   let view = "mytime", tz = PAY_TZ, deptFilter = "All", query = "", weekStart = null;
@@ -2825,6 +2833,7 @@ dialog::backdrop{background:var(--scrim)}
         Object.assign(m, f); return { ok: true };
       }
       case "resetPin": D.members.find(x => x.id === b.id).hasPin = false; return { ok: true };
+      case "inviteLinks": return { ok: true, links: (b.ids || []).map(id => D.members.find(x => x.id === id)).filter(Boolean).map(m => { if (!m.hasPin && !m.invitedAt) m.invitedAt = Date.now(); return { id: m.id, name: m.name, email: m.email, signedUp: !!m.hasPin, link: `https://pl-time-cards.vercel.app/?join=demo-${m.id.slice(0, 8)}` }; }) };
       case "demoSetting": D.demoOnLogin = !!b.on; return { ok: true, on: !!b.on };
       case "memberDelete": { const m0 = D.members.find(x => x.id === b.id); if (!m0) derr(404, "That person is already gone."); if (b.id === D.meId) derr(400, "You can’t delete your own account.");
         if ((b.confirmName || "").trim().toLowerCase() !== m0.name.trim().toLowerCase()) derr(400, "Type their full name to confirm.");
@@ -2897,7 +2906,8 @@ dialog::backdrop{background:var(--scrim)}
   let lastLoadAt = 0, lastRev = null;
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
-    deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; me = d.me; members = d.members; live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
+    deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; me = d.me; members = d.members;
+    if (!DEMO && me && me.role === "admin" && members.length < 5 && !autoImportTried) { autoImportTried = true; setTimeout(autoImportTeam, 0); } live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
   // so a change you just made always shows on the very next paint.
@@ -4688,6 +4698,13 @@ dialog::backdrop{background:var(--scrim)}
     H.querySelectorAll("[data-ttno]").forEach(b => b.onclick = () => act([b.dataset.ttno], "rejected", "Not approved"));
     H.querySelectorAll("[data-ttedit]").forEach(b => b.onclick = () => { const x = tmc.rows.find(r => r.id === b.dataset.ttedit); if (x) openDialog(x); });
   }
+  // Show text to copy by hand when the clipboard isn't available.
+  function showLinkText(title, text) {
+    const d = $("dlgNoteAsk"); $("naTitle").textContent = title;
+    $("naBody").textContent = "Copy this and send it by email, text or chat. Each link is personal: it opens straight to creating their password, works for 14 days, and stops working once they’ve signed up.";
+    $("naInput").value = text; $("naOk").textContent = "Done"; $("naOk").className = "btn primary"; d.showModal(); $("naInput").select();
+    d.addEventListener("close", () => { $("naOk").textContent = "Don’t approve"; $("naOk").className = "btn dangerfill"; }, { once: true });
+  }
   // A short note prompt (used for "Don't approve").
   function askNote(title, body, placeholder) {
     return new Promise(resolve => {
@@ -5827,6 +5844,7 @@ dialog::backdrop{background:var(--scrim)}
         <div class="seg">${[["notyet", "Not invited"], ["invited", "Invited"], ["signed", "Signed up"], ["all", "All"]].map(([k, l]) => `<button data-invf="${k}" aria-pressed="${invF === k}">${l} <span class="spcount">${(() => { const tp = people.filter(m => invDept === "All" || m.dept === invDept); return k === "all" ? tp.length : tp.filter(m => invStatus(m) === k).length; })()}</span></button>`).join("")}</div>
         <span class="grow"></span>
         <button class="btn sm" id="invAll">${list.filter(m => !m.hasPin).every(m => invSel.has(m.id)) && invSel.size ? "Clear selection" : `Select all (${list.filter(m => !m.hasPin).length})`}</button>
+        <button class="btn sm" id="invCopy" ${invSel.size ? "" : "disabled"} title="Copy each person’s personal sign-up link (name + link, one per line) to paste in a chat">🔗 Copy links${invSel.size ? ` (${invSel.size})` : ""}</button>
         <button class="btn sm primary" id="invSend" ${invSel.size ? "" : "disabled"}>✉ Send invite${invSel.size === 1 ? "" : "s"}${invSel.size ? ` (${invSel.size})` : ""}</button></div>
       <div class="tablewrap flat invwrap"><table class="ttable invtable"><thead><tr><th></th><th>Team member</th><th>Work email</th><th>Team</th><th>Status</th><th></th></tr></thead><tbody>
         ${list.map(m => `<tr><td>${m.hasPin ? "" : `<input type="checkbox" data-invck="${m.id}" ${invSel.has(m.id) ? "checked" : ""} aria-label="Select ${esc(m.name)}">`}</td>
@@ -5846,9 +5864,19 @@ dialog::backdrop{background:var(--scrim)}
     $("invSend").onclick = () => send([...invSel]);
     P.querySelectorAll("[data-inv1]").forEach(b => b.onclick = () => send([b.dataset.inv1]));
     P.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => deleteMember(memberById(b.dataset.mdel)));
-    P.querySelectorAll("[data-invcopy]").forEach(b => b.onclick = async () => { const m = memberById(b.dataset.invcopy); const link = invLink(m);
-      try { await navigator.clipboard.writeText(link); toast("Sign-up link copied"); } catch (e) { prompt ? toast(link) : null; } });
+    P.querySelectorAll("[data-invcopy]").forEach(b => b.onclick = async () => {
+      try { const r = await dataCall({ op: "inviteLinks", ids: [b.dataset.invcopy] }); const x = r.links[0]; if (!x) return;
+        try { await navigator.clipboard.writeText(x.link); toast(`Sign-up link for ${x.name} copied. It opens straight to “create a password”.`); }
+        catch (e) { showLinkText(`Sign-up link for ${x.name}`, x.link); }
+        load(); } catch (e) { toast(e.message); } });
     if ($("invSync")) $("invSync").onclick = () => { $("impGo")?.click(); };
+    if ($("invCopy")) $("invCopy").onclick = async () => {
+      try { const r = await dataCall({ op: "inviteLinks", ids: [...invSel] });
+        const text = r.links.filter(x => !x.signedUp).map(x => `${x.name} — ${x.link}`).join("\n");
+        if (!text) { toast("Everyone selected has already signed up"); return; }
+        try { await navigator.clipboard.writeText(text); toast(`Copied ${text.split("\n").length} personal sign-up links`); }
+        catch (e) { showLinkText(`Sign-up links (${text.split("\n").length})`, text); }
+        invSel.clear(); load(); } catch (e) { toast(e.message); } };
   }
 
   // ---------- admin access + active switches ----------
@@ -6820,7 +6848,9 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
         <div class="opts" role="radiogroup">${aInfo.channels.map(c => `<label class="opt"><input type="radio" name="ch" value="${c.id}" ${c.id === aChannel ? "checked" : ""}>${esc(c.label)}</label>`).join("")}</div>
         ${err}
         <button class="btn primary" id="aGo" ${dis}>Continue</button>
+        ${aInfo.canSetup && !aReset ? `<button class="btn" id="aSetup" type="button">First-time setup: create my password without a code</button>` : ""}
         <div class="ahelp">By continuing, you agree to be contacted for verification. Carrier fees may apply.</div>`;
+      if ($("aSetup")) $("aSetup").onclick = () => { aStep = "setup"; aErr = ""; renderAuth(); };
       b.querySelectorAll("input[name=ch]").forEach(r => r.onchange = () => { aChannel = r.value; });
       $("aGo").onclick = () => doSend(false);
     } else if (aStep === "code") {
@@ -6840,6 +6870,23 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
       $("aOther").onclick = () => { aStep = "method"; aErr = ""; renderAuth(); };
       if (wait) setTimeout(() => { if (aStep === "code" && !me) { const v = $("aCode")?.value; renderAuth(); if ($("aCode")) $("aCode").value = v || ""; } }, 1000);
       focus = "aCode";
+    } else if (aStep === "setup") {
+      b.innerHTML = `${pill(true)}
+        <h2>First-time setup</h2>
+        <div class="ahelp">No email code needed this once. Enter the <b>setup key</b>: the first 8 characters of <b>SESSION_SECRET</b> in Vercel (Settings › Environment Variables). Then create your password. After this, everyone signs in normally.</div>
+        <label>Setup key<input class="field" id="aKey" maxlength="8" autocomplete="off" spellcheck="false" placeholder="8 characters"></label>
+        ${pinField("aPin1", "Password", "new-password")}
+        ${pinField("aPin2", "Confirm password", "new-password")}
+        ${!aInfo.hasPhone ? `<label>Mobile number<input class="field" id="aPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="+63 917 123 4567"></label>` : ""}
+        ${err}
+        <button class="btn primary" id="aSetupGo" ${dis}>Create password and sign in</button>
+        <button class="linkbtn" id="aSetupBack" type="button">Back to email code</button>`;
+      $("aSetupBack").onclick = () => { aStep = "method"; aErr = ""; renderAuth(); };
+      $("aSetupGo").onclick = () => { const key = $("aKey").value.trim(), p1 = $("aPin1").value, p2 = $("aPin2").value, phone = $("aPhone") ? $("aPhone").value : "";
+        if (p1 !== p2) { aErr = "The two passwords don’t match."; renderAuth(); return; }
+        const h = pwHint(p1); if (h) { aErr = h; renderAuth(); return; }
+        step(async () => { await authCall("setup", { email: aInfo.email, key, pin: p1, phone }); await signedIn(true); }); };
+      focus = "aKey";
     } else if (aStep === "create") {
       b.innerHTML = `${pill(true)}
         <h2>${aReset ? "Create a new password" : "Create your password"}</h2>
@@ -6961,7 +7008,14 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   if (DEMO && !/[?&]demo\b/.test(location.search)) startDemo();   // the published preview build is always a demo
   else if (DEMO) { DEMO = false; fetch("/api/auth?config=1").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(c => { demoAllowed = !!c.demo; if (demoAllowed) { DEMO = true; startDemo(); } else { aErr = "The demo is turned off. Sign in with your work email."; history.replaceState(null, "", location.pathname + location.hash); load(); } }); }
   if (!DEMO && !WANT_DEMO) fetch("/api/auth?config=1").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(c => { demoAllowed = !!c.demo; if (!me && typeof renderAuth === "function") renderAuth(); });
-  if (!DEMO && !WANT_DEMO) load().then(() => { if (me) setView(VIEWS.includes(h) || h.startsWith("mytime-") || h.startsWith("profile-") ? h : homeView()); else if (apiDown) { aErr = "The server isn’t set up yet, so sign-in won’t work here. You can explore the demo instead."; renderAuth(); } });
+  const joinTok = new URLSearchParams(location.search).get("join");
+  if (joinTok && !DEMO) {
+    history.replaceState(null, "", location.pathname + location.hash);
+    authCall("join", { token: joinTok }).then(r => { aEmail = r.email || ""; aInfo = { name: r.name || "", email: r.email || "", hasPhone: !!r.hasPhone, hasPin: r.next !== "createPin", channels: [] };
+      aReset = false; aStep = r.next === "createPin" ? "create" : "pin"; if (r.next !== "createPin") aErr = "You’ve already signed up. Enter your password."; renderAuth(); })
+      .catch(e => { aErr = e.message; aStep = "email"; renderAuth(); });
+  }
+  if (!DEMO && !WANT_DEMO && !joinTok) load().then(() => { if (me) setView(VIEWS.includes(h) || h.startsWith("mytime-") || h.startsWith("profile-") ? h : homeView()); else if (apiDown) { aErr = "The server isn’t set up yet, so sign-in won’t work here. You can explore the demo instead."; renderAuth(); } });
 })();
 </script>
 </body>
