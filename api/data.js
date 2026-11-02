@@ -47,21 +47,34 @@ export default async function handler(req, res) {
       const [cfg] = await sql`select value from settings where key = 'production'`;
       const c = cfg ? (cfg.value || {}) : { cardId: DEFAULT_CARDS_QUESTION };   // no setting saved yet → the PL cards question
       if (!c.cardId) return send(res, 200, { configured: false });
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: PAY_TZ }).format(new Date());
+      // Metabase's WORK_DATE is a Pacific date. ?tz=manila shows Manila days: a Manila day D holds WORK_DATE D−1
+      // (the PL shift 1:50–10:10 PM PT = 5:50 AM–2:10 PM Manila next day; Oregon's 8:45–5:15 PT = 12:45–9:15 AM Manila next day).
+      const manila = req.query.tz !== "pacific";
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: manila ? PAY_TZ : "America/Los_Angeles" }).format(new Date());
       const day = dayOk(req.query.date) ? req.query.date : today;
       let data;
       const force = admin && req.query.refresh === "1";
       try { data = await metabaseCardRows(c.cardId, force); if (force) await bumpRev(); } catch (e) { return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, error: e.message }); }
       const nameCol = c.nameCol || "FULL_NAME", dateCol = c.dateCol || "WORK_DATE", totalCol = c.totalCol || "TOTAL_CARDS";
-      const toDay = v => { if (!v) return ""; const s = String(v); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10); const t = Date.parse(s); return Number.isFinite(t) ? new Date(t + 12 * 3600e3).toISOString().slice(0, 10) : ""; };
+      const rawDay = v => { if (!v) return ""; const s = String(v); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10); const t = Date.parse(s); return Number.isFinite(t) ? new Date(t + 12 * 3600e3).toISOString().slice(0, 10) : ""; };
+      const plus1 = k => { const [y, mo, d] = k.split("-").map(Number); return new Date(Date.UTC(y, mo - 1, d + 1)).toISOString().slice(0, 10); };
+      const toDay = v => { const k = rawDay(v); return k && manila ? plus1(k) : k; };   // the day this row belongs to in the chosen view
+      const teamCol = c.teamCol || "TEAM";
+      // Skip summary rows like "TEAM TOTAL"; Metabase's TEAM column says which team (Review = the Oregon team, PL = Manila)
+      const isTotalRow = r => /^\s*(team\s+)?total\s*$/i.test(String(r[nameCol] || ""));
+      const mbTeam = r => String(r[teamCol] ?? "").trim();
+      const oregonRow = r => /^review$/i.test(mbTeam(r));
       const days = [...new Set(data.rows.map(r => toDay(r[dateCol])).filter(Boolean))].sort();
       const roster = await sql`select id, name, manager_id from members where active`;
       const team = admin ? null : new Set([me.id]);   // only admins see the team; everyone else sees just their own numbers
       const num = v => typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
-      const taskCols = data.cols.filter(k => k !== nameCol && k !== dateCol && k !== totalCol && data.rows.some(r => r[k] !== null && r[k] !== "" && Number.isFinite(num(r[k]))));
+      data = { ...data, rows: data.rows.filter(r => !isTotalRow(r)) };
+      const taskCols = data.cols.filter(k => k !== nameCol && k !== dateCol && k !== totalCol && k !== teamCol && data.rows.some(r => r[k] !== null && r[k] !== "" && Number.isFinite(num(r[k]))));
+      // Oregon reviewers aren't on the PL list: never match them to a PL person by a similar name
+      const matchRow = r => oregonRow(r) ? (roster.find(m => m.name.trim().toLowerCase() === String(r[nameCol] || "").trim().toLowerCase()) || null) : matchMember(r[nameCol], roster);
       // ?mine=1: one person's own numbers for every day the question returns (for "My metrics").
       if (req.query.mine) {
-        const series = data.rows.filter(r => matchMember(r[nameCol], roster)?.id === me.id).map(r => {
+        const series = data.rows.filter(r => matchRow(r)?.id === me.id).map(r => {
           const values = Object.fromEntries(taskCols.map(k => [k, num(r[k]) || 0]));
           return { date: toDay(r[dateCol]), values, total: num(r[totalCol]) || Object.values(values).reduce((a, v) => a + v, 0) };
         }).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date)).slice(-31);
@@ -79,17 +92,17 @@ export default async function handler(req, res) {
       const byKey = new Map();
       for (const r of data.rows) {
         const dd = toDay(r[dateCol]); if (!dd || dd < from || dd > to) continue;
-        const m = matchMember(r[nameCol], roster);
+        const m = matchRow(r);
         if (!admin && !(m && team.has(m.id))) continue;
         const key = m?.id || "n:" + String(r[nameCol]).toLowerCase();
-        const cur = byKey.get(key) || { memberId: m?.id || null, name: r[nameCol], values: Object.fromEntries(taskCols.map(k => [k, 0])), total: 0, days: new Set() };
+        const cur = byKey.get(key) || { memberId: m?.id || null, name: r[nameCol], team: oregonRow(r) ? "Oregon" : (mbTeam(r) || null), values: Object.fromEntries(taskCols.map(k => [k, 0])), total: 0, days: new Set() };
         taskCols.forEach(k => { cur.values[k] += num(r[k]) || 0; });
         cur.total += num(r[totalCol]) || taskCols.filter(k => !/REJECT/i.test(k)).reduce((a, k) => a + (num(r[k]) || 0), 0);
         cur.days.add(dd); byKey.set(key, cur);
       }
       const rows = [...byKey.values()].map(r => ({ ...r, days: r.days.size }));
       res.setHeader("Cache-Control", "no-store");
-      return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, nextRefresh: data.at + 3600000, range, date: anchor, from, to, today,
+      return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, nextRefresh: data.at + 3600000, range, date: anchor, from, to, today, tz: manila ? "manila" : "pacific",
         days: days.slice(-120), columns: taskCols, rows, fetchedAt: data.at });
     }
     // Metrics: the Metabase dashboards this person may see, with fresh signed embed links (?metrics=1).

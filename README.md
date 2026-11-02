@@ -219,3 +219,10 @@ Metrics tables keep their header (Crop · Data · … · Total, with the team co
 
 
 **Review questions:** Reviews › **📝 Questions** (also in New review cycle) shows the self review questions (with hints; {Y} = year reviewed, {N} = next year), the manager statements (1–5 votes) and the open question. Admins can edit, add or remove them and Save, or **Reset to the original questions**. New self reviews and manager reviews use the saved questions; reviews already sent keep theirs.
+
+
+## Metrics days: Pacific vs Manila
+Metabase’s `WORK_DATE` is a Pacific date. With the top bar on **🇺🇸 Pacific**, a day shows that WORK_DATE (Oregon 8:45 AM–5:15 PM; the PL shift crosses the same afternoon, 1:50–10:10 PM). On **🇵🇭 Manila**, a day D shows WORK_DATE D−1 (PL 5:50 AM–2:10 PM Manila; Oregon falls 12:45–9:15 AM Manila the same day). Each Metabase day lands on exactly one day in each view, so the two never mix; week and month ranges follow the same rule, and switching Manila/Pacific reloads Metrics. The card’s **TEAM** column decides teams (`Review` → the Oregon pill, never matched to a PL person by a similar name; `PL` → matched to the PL list), and the **TEAM TOTAL** row is left out.
+
+
+**Side by side:** in Metrics › Cards by task (Day), **⇆ Side by side** shows a 🇺🇸 Pacific day next to a 🇵🇭 Manila day, each grouped Oregon (Review) and PL · Manila team with their shift times and totals. **Same work** lines up the same shifts (Pacific D ↔ Manila D+1, e.g. Mon Nov 2 PT ↔ Tue Nov 3 Manila); **Same date** shows the same calendar date in both zones. The regular table stays below.

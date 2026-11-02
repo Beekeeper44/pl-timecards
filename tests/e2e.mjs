@@ -7,7 +7,16 @@ process.env.DEV_SHOW_CODES = "1";
 process.env.RESEND_API_KEY = "test"; process.env.RESEND_FROM = "PL Time Cards <t@x.com>"; process.env.APP_URL = "https://pltc.test";
 import fs from "node:fs";
 const sent = [];   // emails "sent" through Resend
-globalThis.fetch = async (url, opt) => { if (String(url).includes("resend")) { sent.push(JSON.parse(opt.body)); return new Response(JSON.stringify({ id: "x" }), { status: 200 }); } throw new Error("unexpected fetch " + url); };
+process.env.METABASE_HOST = "https://mb.test"; process.env.METABASE_API_KEY = "test";
+const MB_ROWS = [
+  { WORK_DATE: "2026-11-02", FULL_NAME: "TEAM TOTAL", REVIEW_CARDS: 389, CROP_CARDS: 95, TOTAL_CARDS: 1945, TEAM: null },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Austin Crawford", REVIEW_CARDS: 101, CROP_CARDS: 0, TOTAL_CARDS: 136, TEAM: "Review" },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Kaity Paul", REVIEW_CARDS: 47, CROP_CARDS: 2, TOTAL_CARDS: 115, TEAM: "Review" },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", REVIEW_CARDS: 0, CROP_CARDS: 51, TOTAL_CARDS: 51, TEAM: "PL" },
+  { WORK_DATE: "2026-11-01", FULL_NAME: "Benedict Bueno", REVIEW_CARDS: 0, CROP_CARDS: 40, TOTAL_CARDS: 40, TEAM: "PL" },
+];
+globalThis.fetch = async (url, opt) => { if (String(url).includes("mb.test/api/card/")) return new Response(JSON.stringify(MB_ROWS), { status: 200 });
+  if (String(url).includes("resend")) { sent.push(JSON.parse(opt.body)); return new Response(JSON.stringify({ id: "x" }), { status: 200 }); } throw new Error("unexpected fetch " + url); };
 const auth = (await import("./api/auth.js")).default, data = (await import("./api/data.js")).default, health = (await import("./api/health.js")).default;
 const { __pool: pool } = await import("@neondatabase/serverless");
 const q = async (t, v = []) => (await pool.query(t, v)).rows;
@@ -231,6 +240,17 @@ await A.op({ op: "shiftSettings", shift: { ...cur2, habits: { ...cur2.habits, OS
 
 r = await A.op({ op: "metricsTeam", name: "Lea Alan DeBruin", dept: "Oregon" });
 const mtL = (await A.get({ week: "" })).body.metricsTeams; ok(r.status === 200 && mtL["lea alan debruin"] === "Oregon", "Metrics team for a Metabase-only person is saved");
+
+step("8c. Metrics days: Pacific vs Manila (Metabase dates are Pacific)");
+let pt = await A.get({ production: "1", tz: "pacific", range: "day", date: "2026-11-02" });
+const nm = d => d.rows.map(r => `${r.name}:${r.total}${r.team ? "/" + r.team : ""}`).sort().join(", ");
+ok(pt.status === 200 && !pt.body.rows.some(r => /total/i.test(r.name)), "TEAM TOTAL row is left out");
+ok(/Austin Crawford:136\/Oregon/.test(nm(pt.body)) && /Bueno:51/.test(nm(pt.body)) && !/Bueno:40/.test(nm(pt.body)), `Pacific Nov 2 = Metabase Nov 2 only (${nm(pt.body)})`);
+let mn = await A.get({ production: "1", tz: "manila", range: "day", date: "2026-11-03" });
+ok(/Austin Crawford:136/.test(nm(mn.body)) && /Bueno:51/.test(nm(mn.body)) && !/Bueno:40/.test(nm(mn.body)), `Manila Nov 3 = Metabase (Pacific) Nov 2 (${nm(mn.body)})`);
+mn = await A.get({ production: "1", tz: "manila", range: "day", date: "2026-11-02" });
+ok(/Bueno:40/.test(nm(mn.body)) && !/Austin/.test(nm(mn.body)), `Manila Nov 2 = Metabase Nov 1, no cross-over (${nm(mn.body)})`);
+ok(pt.body.rows.find(r => r.name === "Kaity Paul")?.memberId == null, "an Oregon reviewer is never matched to a PL person by a similar name");
 
 // 9. Announcements with an image
 step("9. Announcement with an image");

@@ -313,6 +313,14 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 #dlgQuestions .dlg{gap:14px} .rqsec{display:grid;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel2)}
 .rqrow{display:grid;grid-template-columns:22px minmax(0,1fr) 28px;gap:8px;align-items:start} .rqn{font-weight:700;color:var(--muted);padding-top:9px;text-align:right}
 .rqf{display:grid;gap:4px} .rqf textarea[data-rq$="h"]{font-size:13px;color:var(--muted)} .rqf textarea{min-height:0;resize:vertical} .rqsec .btn.sm{justify-self:start}
+.sxs{margin:10px 0 12px;display:grid;gap:10px} .sxsbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sxsgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px} @media (max-width:1000px){.sxsgrid{grid-template-columns:1fr}}
+.sxsp{border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:12px 14px;display:grid;gap:4px;align-content:start}
+.sxsh{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px} .sxsh b{font-size:18px} .sxsflag{font-weight:700} .pill2{border:1px solid var(--line2);border-radius:999px;padding:2px 9px;font-size:12px;color:var(--muted)}
+.sxsg{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-top:1px solid var(--line);padding-top:8px;margin-top:6px}
+.sxsg b{font-size:13px;text-transform:uppercase;letter-spacing:.04em} .sxsg span{font-size:12.5px;color:var(--muted)} .sxsg.or b{color:#0ea5a4} .sxsg.pl b{color:var(--green)}
+.sxsn{font-size:12.5px;color:var(--muted)} .sxsn b{color:var(--text)}
+.sxst{width:100%;min-width:0!important;border-collapse:collapse;font-size:13px} .sxst td{padding:4px 4px;border-bottom:1px solid var(--line)} .sxst td.n{text-align:right;font-weight:700} .sxst tr.sum td{font-weight:800;border-bottom:0}
 .tcscope{margin:0 0 12px}
 .tcscope .pill-count{margin-left:6px}
 .ttpanel .weekhead{padding:16px 18px 6px;align-items:flex-start;gap:16px}
@@ -2928,7 +2936,7 @@ dialog::backdrop{background:var(--scrim)}
   let lastLoadAt = 0, lastRev = null;
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
-    applyReviewQuestions(d.reviewQuestions); deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxTeams = { ...MX_TEAM_DEFAULTS, ...(d.metricsTeams || {}) }; me = d.me; members = d.members;
+    applyReviewQuestions(d.reviewQuestions); deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxSaved = { ...(d.metricsTeams || {}) }; mxTeams = { ...MX_TEAM_DEFAULTS, ...mxSaved }; me = d.me; members = d.members;
     if (!DEMO && me && me.role === "admin" && members.length < 5 && !autoImportTried) { autoImportTried = true; setTimeout(autoImportTeam, 0); } live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
@@ -5217,7 +5225,12 @@ dialog::backdrop{background:var(--scrim)}
     "princess cordova": "Grading", "cess cordova": "Grading" };
   let mxTeams = { ...MX_TEAM_DEFAULTS };
   const mxTok = x => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z]+/).filter(Boolean);
-  const mxTeamOf = n => { const k = String(n || "").trim().toLowerCase(); if (k in mxTeams) return mxTeams[k] || "";
+  let mxSaved = {};   // teams admins picked (override everything)
+  const mbTeamOf = new Map();   // name → "Oregon" when Metabase's TEAM column says Review
+  const mxTeamOf = n => { const k = String(n || "").trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(mxSaved, k)) return mxSaved[k] || "";
+    if (mbTeamOf.has(k)) return mbTeamOf.get(k);
+    if (k in mxTeams) return mxTeams[k] || "";
     // a saved or default entry whose words are all in the name ("mikayla" → "Mikayla Reyes"); longest entry wins
     const t = mxTok(n); const hit = Object.keys(mxTeams).filter(e => { const et = mxTok(e); return et.length && et.every(w => t.includes(w)); }).sort((a, b) => b.length - a.length)[0];
     return hit ? mxTeams[hit] || "" : ""; };
@@ -5225,7 +5238,7 @@ dialog::backdrop{background:var(--scrim)}
   document.addEventListener("click", e => { const b = e.target.closest("[data-mxadd]"); if (!b) return; e.stopPropagation(); e.preventDefault();
     const name = b.dataset.mxadd; openAddMember({ name, dept: KNOWN_TEAM[name.trim().toLowerCase()] || "Data", location: "Philippines" }); }, true);
   document.addEventListener("change", e => { const sel = e.target.closest("[data-mxteam]"); if (!sel) return;
-    const name = sel.dataset.mxteam, dept = sel.value; mxTeams[name.trim().toLowerCase()] = dept;
+    const name = sel.dataset.mxteam, dept = sel.value; mxTeams[name.trim().toLowerCase()] = dept; mxSaved[name.trim().toLowerCase()] = dept;
     run(() => dataCall({ op: "metricsTeam", name, dept }), dept ? `${name} counts under ${dept} in Metrics` : `${name} has no team in Metrics`).then(() => { if (typeof renderMetrics === "function") renderMetrics(); }); });
   document.addEventListener("click", e => { if (e.target.closest("[data-mxteam]")) e.stopPropagation(); }, true);
   function openAddMember(preset = {}) {
@@ -5335,8 +5348,11 @@ dialog::backdrop{background:var(--scrim)}
     return (sampleDailyCache = { uid: me?.id, today, rows, days });
   }
   function sampleProduction(reason) {
-    const sd = sampleDaily(), anchor = pr.date || today, agg = aggregateDaily(sd.rows, pr.range, anchor);
-    return { configured: true, sample: true, reason, range: pr.range, date: anchor, from: agg.from, to: agg.to, today, days: sd.days, columns: SAMPLE_COLS, rows: agg.rows, fetchedAt: Date.now() };
+    const td = todayIn(tz);   // follows the Manila / Pacific switch like the live app
+    const sd0 = sampleDaily(), mnl = tz === PAY_TZ, shift = k => { const [y, m, d] = k.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10); };
+    const sd = mnl ? { ...sd0, rows: sd0.rows.map(r => ({ ...r, date: shift(r.date) })), days: sd0.days.map(shift) } : sd0;   // sample dates are Pacific, like Metabase
+    const anchor = pr.date || td, agg = aggregateDaily(sd.rows, pr.range, anchor);
+    return { configured: true, sample: true, reason, range: pr.range, date: anchor, from: agg.from, to: agg.to, today: td, days: sd.days, columns: SAMPLE_COLS, rows: agg.rows, fetchedAt: Date.now() };
   }
   const sampleBanner = d => d && d.sample ? `<div class="samplebar"><b>Demo data</b> · made-up numbers for every team so you can try the page (25 people’s Fri, Oct 30 counts are from your Metabase table). ${isAdmin() ? (d.reason ? esc(d.reason) + " " : "") + "Live numbers replace this once <code>METABASE_API_KEY</code> is set in Vercel." : "Live numbers will show here soon."}</div>` : "";
 
@@ -5363,23 +5379,77 @@ dialog::backdrop{background:var(--scrim)}
     const vis = isAdmin() ? activeMembers() : activeMembers().filter(m => m.id === me.id || m.managerId === me.id);
     const rows = activeMembers().filter(m => (by[m.dept] || []).length).map(m => { const v = Object.fromEntries(cols.map(c => [c, 0])); (by[m.dept] || []).forEach((c, i) => { v[c] = rnd(i === 0 ? 220 : 120); }); if (rnd(5) === 0) v.GRADER_REJECTIONS = rnd(3) + 1;
       return { memberId: m.id, name: m.name, values: v, total: cols.filter(c => !/REJECT/.test(c)).reduce((a, c) => a + v[c], 0) }; }).filter(r => vis.some(m => m.id === r.memberId));
-    return { configured: true, date: today, days: [today], columns: cols, rows, fetchedAt: Date.now() };
+    const td = todayIn(tz);   // the demo follows the Manila / Pacific switch like the live app
+    return { configured: true, date: td, days: [td], columns: cols, rows, fetchedAt: Date.now() };
   }
   async function loadProduction(force, refreshMb) {
+    const zk = tz === PAY_TZ ? "manila" : "pacific";
+    if (pr.zone && pr.zone !== zk) { pr.date = null; force = true; }   // switched Manila ↔ Pacific: reload that view's days
     if (pr.loading || (!force && pr.data && Date.now() - pr.at < 60000)) return;
-    pr.loading = true;
-    try { pr.data = DEMO ? { ...sampleProduction(), fetchedAt: refreshMb ? Date.now() : (pr.data?.fetchedAt || Date.now()) } : await api(`/api/data?production=1&range=${pr.range}${pr.date ? `&date=${pr.date}` : ""}${refreshMb ? "&refresh=1" : ""}`); pr.at = Date.now(); if (pr.data?.cardId) pr.cfgCard = pr.data.cardId; }
+    pr.loading = true; pr.zone = zk;
+    try { pr.data = DEMO ? { ...sampleProduction(), fetchedAt: refreshMb ? Date.now() : (pr.data?.fetchedAt || Date.now()) } : await api(`/api/data?production=1&tz=${tz === PAY_TZ ? "manila" : "pacific"}&range=${pr.range}${pr.date ? `&date=${pr.date}` : ""}${refreshMb ? "&refresh=1" : ""}`); pr.at = Date.now(); if (pr.data?.cardId) pr.cfgCard = pr.data.cardId; }
     catch (e) { pr.data = { configured: true, error: e.message }; }
     // Not connected yet (or Metabase unreachable): show the sample day so the page isn't empty.
     if (pr.data && (!pr.data.configured || pr.data.error) && !DEMO) pr.data = sampleProduction(pr.data.error || (pr.data.configured ? "" : "Cards today is turned off in Manage dashboards."));
     pr.loading = false; renderSideNav(); if (view === "metrics") renderMetrics();
+  }
+  // ---------- Side by side: a Pacific day next to its Manila day ----------
+  // "Same work" lines up the same shifts (Pacific D ↔ Manila D+1); "Same date" puts the same calendar date side by side.
+  const OREGON_SHIFT = ["08:45", "17:15"];   // Oregon reviewers, Pacific time
+  const sxs = { on: false, line: "work", key: "", pt: null, mn: null, loading: false, all: false };
+  const addDayKey = (k, n) => { const [y, m, d] = k.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+  function sxsDates(baseDay) {
+    const manilaNow = tz === PAY_TZ;
+    if (sxs.line === "date") return { pt: baseDay, mn: baseDay };
+    return manilaNow ? { pt: addDayKey(baseDay, -1), mn: baseDay } : { pt: baseDay, mn: addDayKey(baseDay, 1) };
+  }
+  async function loadSxs(baseDay) {
+    const dd = sxsDates(baseDay), key = `${dd.pt}|${dd.mn}`;
+    if (sxs.loading || sxs.key === key) return; sxs.loading = true; sxs.key = key; sxs.pt = sxs.mn = null;
+    try {
+      if (DEMO) { const a = sampleProduction(); sxs.pt = a; sxs.mn = a; }
+      else [sxs.pt, sxs.mn] = await Promise.all([api(`/api/data?production=1&tz=pacific&range=day&date=${dd.pt}`), api(`/api/data?production=1&tz=manila&range=day&date=${dd.mn}`)]);
+    } catch (e) { sxs.pt = sxs.mn = { error: e.message }; }
+    sxs.loading = false; if (view === "metrics") renderMetrics();
+  }
+  function sxsHtml(baseDay) {
+    const dd = sxsDates(baseDay); loadSxs(baseDay);
+    const ptT = hhmm => fmt12(hhmm);
+    const toManila = (day, hhmm) => { const ms = zonedToMs(`${day}T${hhmm}`, "America/Los_Angeles"); return { t: fmtIn(ms, PAY_TZ, { hour: "numeric", minute: "2-digit" }), d: dayKey(ms, PAY_TZ) }; };
+    const plPt = shiftCfg.anchor === PAY_TZ ? null : [shiftCfg.start, shiftCfg.end];   // the normal shift is set in Pacific time
+    const dLabel = k => fmtDayKey(k, { weekday: "short", month: "short", day: "numeric" });
+    const groupRows = data => { if (!data || data.error) return null;
+      const rows = (data.rows || []).filter(r => !/^\s*(team\s+)?total\s*$/i.test(String(r.name || "")) && (!r.memberId || memberById(r.memberId)));
+      const isOr = r => r.team === "Oregon" || (!r.memberId && mxTeamOf(r.name) === "Oregon");
+      const nm = r => (r.memberId && memberById(r.memberId)?.name) || r.name;
+      return { or: rows.filter(isOr).sort((a, b) => b.total - a.total), pl: rows.filter(r => !isOr(r)).sort((a, b) => b.total - a.total), nm }; };
+    const lim = sxs.all ? 400 : 12;
+    const table = (list, nm) => list.length ? `<table class="sxst">${list.slice(0, lim).map(r => `<tr><td>${esc(nm(r))}</td><td class="n">${r.total.toLocaleString()}</td></tr>`).join("")}${list.length > lim ? `<tr><td><button class="linkbtn" data-sxsall>Show all ${list.length}</button></td><td></td></tr>` : ""}<tr class="sum"><td>Total</td><td class="n">${list.reduce((a, r) => a + r.total, 0).toLocaleString()}</td></tr></table>` : '<div class="dim" style="padding:6px 0">No cards</div>';
+    const side = (which) => {
+      const data = which === "pt" ? sxs.pt : sxs.mn, day = dd[which], g = groupRows(data);
+      const orIn = toManila(which === "pt" ? day : addDayKey(day, -1), OREGON_SHIFT[0]), orOut = toManila(which === "pt" ? day : addDayKey(day, -1), OREGON_SHIFT[1]);
+      const plIn = plPt ? toManila(which === "pt" ? day : addDayKey(day, -1), plPt[0]) : null, plOut = plPt ? toManila(which === "pt" ? day : addDayKey(day, -1), plPt[1]) : null;
+      const orWin = which === "pt" ? `${dLabel(day)} · ${ptT(OREGON_SHIFT[0])} – ${ptT(OREGON_SHIFT[1])} PT` : `${dLabel(day)} · ${orIn.t} – ${orOut.t} Manila`;
+      const plWin = !plPt ? "Normal shift" : which === "pt" ? `${dLabel(day)} · ${ptT(plPt[0])} – ${ptT(plPt[1])} PT` : `${dLabel(day)} · ${plIn.t} – ${plOut.t} Manila`;
+      const plNote = which === "pt" && plPt ? `<div class="sxsn">= their Manila payroll day <b>${dLabel(plIn.d)}</b> · ${plIn.t} – ${plOut.t}</div>` : "";
+      const orNote = which === "mn" ? `<div class="sxsn">= their Pacific day <b>${dLabel(addDayKey(day, -1))}</b> · ${ptT(OREGON_SHIFT[0])} – ${ptT(OREGON_SHIFT[1])}</div>` : "";
+      const body = !data ? '<div class="dim">Loading…</div>' : data.error ? `<div class="dim">${esc(data.error)}</div>` : (() => {
+        const orB = `<div class="sxsg or"><b>Oregon (Review)</b><span>${orWin}</span></div>${orNote}${table(g.or, g.nm)}`;
+        const plB = `<div class="sxsg pl"><b>PL · Manila team</b><span>${plWin}</span></div>${plNote}${table(g.pl, g.nm)}`;
+        return which === "pt" ? orB + plB : plB + orB; })();
+      return `<div class="sxsp"><div class="sxsh"><span class="sxsflag">${which === "pt" ? "🇺🇸 Pacific" : "🇵🇭 Manila"}</span><b>${dLabel(day)}</b><span class="pill2">${which === "pt" ? "Pacific day · midnight to midnight PT" : "Manila payroll day · midnight to midnight Manila"}</span></div>${body}</div>`;
+    };
+    return `<div class="sxs"><div class="sxsbar"><b>Side by side</b><span class="seg"><button data-sxsl="work" aria-pressed="${sxs.line === "work"}">Same work</button><button data-sxsl="date" aria-pressed="${sxs.line === "date"}">Same date</button></span>
+      <span class="dim">${sxs.line === "work" ? "The same shifts, labelled by each side’s own day." : "The same calendar date in both time zones (different work)."}</span></div>
+      <div class="sxsgrid">${side("pt")}${side("mn")}</div></div>`;
   }
   function productionHtml() {
     const d = pr.data; const admin = isAdmin(), lead = isLeadUser();
     if (!d) return `<div class="empty"><b>Loading card counts…</b></div>`;
     if (d.error) return `<div class="empty"><b>Couldn’t load card counts</b>${esc(d.error)}</div>`;
     const memberOf = r => r.memberId ? memberById(r.memberId) : null;
-    let rows = d.rows.filter(r => (!r.memberId || memberById(r.memberId)) && !(!r.memberId && isDeletedName(r.name))).filter(r => (pr.dept === "All" || (memberOf(r)?.dept || mxTeamOf(r.name)) === pr.dept) && (!pr.q || (r.name + " " + (memberOf(r)?.name || "")).toLowerCase().includes(pr.q.toLowerCase())));
+    d.rows.forEach(r => { if (r.team === "Oregon") mbTeamOf.set(String(r.name || "").trim().toLowerCase(), "Oregon"); });
+     let rows = d.rows.filter(r => !/^\s*(team\s+)?total\s*$/i.test(String(r.name || ""))).filter(r => (!r.memberId || memberById(r.memberId)) && !(!r.memberId && isDeletedName(r.name))).filter(r => (pr.dept === "All" || (memberOf(r)?.dept || mxTeamOf(r.name)) === pr.dept) && (!pr.q || (r.name + " " + (memberOf(r)?.name || "")).toLowerCase().includes(pr.q.toLowerCase())));
     const { k, dir } = pr.sort;
     rows.sort((a, b) => (k === "name" ? (memberOf(a)?.name || a.name).localeCompare(memberOf(b)?.name || b.name) : k === "total" ? a.total - b.total : k === "avg" ? a.total / (a.days || 1) - b.total / (b.days || 1) : (a.values[k] || 0) - (b.values[k] || 0)) * dir || (memberOf(a)?.name || a.name).localeCompare(memberOf(b)?.name || b.name));
     d.rows.forEach(r => withRejects(r.values));
@@ -5393,6 +5463,7 @@ dialog::backdrop{background:var(--scrim)}
     const worked = rows.filter(r => r.total > 0).length;
     const rng = d.range || "day", from = d.from || d.date, to = d.to || d.date;
     const short = k => fmtDayKey(k, { month: "short", day: "numeric" });
+    const today = d.today || todayIn(tz);   // "Today" in the view's own time zone
     const isCur = rng === "day" ? from === today : today >= from && today <= to;
     const periodName = (r, a) => { const [f, t] = periodOf(r, a); const cur = today >= f && today <= t;
       return r === "day" ? (cur ? `Today · ${fmtDayKey(f, { weekday: "short", month: "short", day: "numeric" })}` : fmtDayKey(f, { weekday: "short", month: "short", day: "numeric" }))
@@ -5432,10 +5503,12 @@ dialog::backdrop{background:var(--scrim)}
         <div class="seg" role="group" aria-label="Period">${[["day", "Day"], ["week", "Week"], ["month", "Month"]].map(([k, l]) => `<button data-prr="${k}" aria-pressed="${rng === k}">${l}</button>`).join("")}</div>
         <select class="field sm" id="prDate" aria-label="${rng === "day" ? "Day" : rng === "week" ? "Week" : "Month"}">${periodKeys.map(x => `<option value="${x}" ${x === from ? "selected" : ""}>${esc(periodName(rng, x))}</option>`).join("")}</select>
         <input class="search" id="prQ" type="search" placeholder="Search name" value="${esc(pr.q)}" aria-label="Search">
+        ${rng === "day" ? `<button class="btn sm ${sxs.on ? "primary" : ""}" id="prSxs" title="Pacific day next to its Manila day">⇆ Side by side</button>` : ""}
         <span class="grow"></span><span class="dim" style="font-size:13px">${d.sample ? "Demo data" : `From Metabase · updated ${ago(d.fetchedAt)} · refreshes hourly`}</span><button class="btn sm" id="prCsv">Export CSV</button></div>
         <div class="deptbar" role="group" aria-label="Team" style="margin:10px 0 4px">${depts.map(x => { const n = x === "All" ? d.rows.length : d.rows.filter(r => (memberOf(r)?.dept || mxTeamOf(r.name)) === x).length, on = pr.dept === x;
           return `<button class="dpill ${on ? "on" : ""}" data-prd="${esc(x)}" aria-pressed="${on}" style="--c:${x === "All" ? "var(--text)" : deptColor(x)}">${x === "All" ? "" : "<i></i>"}${x === "All" ? "All teams" : esc(x)}<span>${n}</span></button>`; }).join("")}</div>
         <div class="tclegend">${["Data", "Review", "Grading", "Recomp"].map(t => `<span style="--tc:${deptColor(t)}"><i></i>${t}${t === "Recomp" ? " (EV)" : ""}</span>`).join("")}<span class="dim">Items does Data and Recomp tasks</span></div>
+        ${rng === "day" && sxs.on ? sxsHtml(from) : ""}
         <div class="tablewrap flat prwrap"><table class="ttable prtable ${rng !== "day" ? "multi" : ""}"><thead><tr>${th("name", "Team member", "nm")}${cols.map(c => th(c, esc(colLabel(c)), /REJECT/.test(c) ? "num rej" : "num")).join("")}${th("total", "Total", "num tot")}${rng !== "day" ? th("avg", "Avg / day", "num avg") : ""}</tr></thead><tbody>
           ${rows.map(r => { const m = memberOf(r); return `<tr class="prsel ${pr.sel === rowKey(r) ? "on" : ""}" data-prsel="${esc(rowKey(r))}" title="Show ${esc(m?.name || r.name)}’s numbers above"><td class="nm">${m ? `<a class="c-name2" href="#profile-${m.id}">${avatar(m)}<span><b>${esc(m.name)}</b><small>${esc(m.dept)}</small></span></a>` : (() => { const tm = mxTeamOf(r.name); return `<span class="c-name2">${tm ? `<span class="av ini" style="background:color-mix(in srgb, ${deptColor(tm)} 18%, transparent);box-shadow:inset 0 0 0 1.5px ${deptColor(tm)};color:var(--text)">${esc(initials(r.name))}</span>` : ""}<span><b>${esc(r.name)}</b><small class="${tm ? "" : "dim"}">${tm ? `${esc(tm)} <span class="dim">· from Metabase</span>` : "not on the team list"}${isAdmin() ? ` · <select class="mxteam" data-mxteam="${esc(r.name)}" title="Which team ${esc(r.name)}’s numbers count under">${["", "Oregon", ...DEPTS.map(([dd]) => dd)].map(dd => `<option value="${esc(dd)}" ${dd === tm ? "selected" : ""}>${dd || "Set team…"}</option>`).join("")}</select>${tm ? "" : ` <button class="linkbtn" data-mxadd="${esc(r.name)}">＋ Add as app user</button>`}` : ""}</small></span></span>`; })()}</td>
             ${cols.map(c => `<td class="num ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""} ${r.values[c] ? "" : "z"}"${colStyle(c)}>${r.values[c] ? r.values[c].toLocaleString() : ""}</td>`).join("")}<td class="num tot">${r.total.toLocaleString()}</td>${rng !== "day" ? `<td class="num avg">${Math.round(r.total / (r.days || 1)).toLocaleString()}<small>${r.days || 1}d</small></td>` : ""}</tr>`; }).join("") || `<tr><td colspan="${cols.length + (rng !== "day" ? 3 : 2)}" class="rqempty">${isCur ? `No cards ${dayLabel} yet. Metabase updates every hour.` : `No cards for ${esc(periodName(rng, from))}.`}</td></tr>`}
@@ -5443,6 +5516,9 @@ dialog::backdrop{background:var(--scrim)}
   }
   function wireProduction(root) {
     const d = pr.data; if (!d || d.error || !root.querySelector("#prDate")) return;
+    if (root.querySelector("#prSxs")) root.querySelector("#prSxs").onclick = () => { sxs.on = !sxs.on; renderMetrics(); };
+    root.querySelectorAll("[data-sxsall]").forEach(b => b.onclick = () => { sxs.all = true; renderMetrics(); });
+    root.querySelectorAll("[data-sxsl]").forEach(b => b.onclick = () => { sxs.line = b.dataset.sxsl; sxs.key = ""; renderMetrics(); });
     root.querySelector("#prDate").onchange = e => { pr.date = e.target.value; pr.data = null; renderMetrics(); loadProduction(true); };
     // Day / Week / Month: start on the current period.
     root.querySelectorAll("[data-prr]").forEach(b => b.onclick = () => { if (pr.range === b.dataset.prr) return; pr.range = b.dataset.prr; pr.date = null; pr.data = null; renderMetrics(); loadProduction(true); });
@@ -5460,6 +5536,7 @@ dialog::backdrop{background:var(--scrim)}
   // ---------- My Metrics (team members: only their own card counts) ----------
   const mym = { at: 0, data: null, loading: false };
   async function loadMyMetrics(force) {
+    const mz = tz === PAY_TZ ? "manila" : "pacific"; if (mym.zone && mym.zone !== mz) force = true; mym.zone = mz;
     if (mym.loading || (!force && mym.data && Date.now() - mym.at < 60000 && mym.uid === me?.id)) return;
     mym.loading = true; mym.uid = me?.id;
     try {
@@ -5470,7 +5547,7 @@ dialog::backdrop{background:var(--scrim)}
           const series = []; for (let i = 13; i >= 0; i--) { const day = addDays(today, -i); const dow = new Date(day + "T00:00:00Z").getUTCDay(); if (dow === 0) continue; const v = Object.fromEntries(cols.map(c => [c, 0])); byD.forEach((c, j) => v[c] = rnd(j === 0 ? 200 : 110) + 10); if (rnd(6) === 0) v.GRADER_REJECTIONS = 1;
             series.push({ date: day, values: v, total: cols.filter(c => !/REJECT/.test(c)).reduce((a, c) => a + v[c], 0) }); }
           mym.data = { configured: true, today, columns: cols, series, fetchedAt: Date.now() }; }
-      } else mym.data = await api("/api/data?production=1&mine=1");
+      } else mym.data = await api(`/api/data?production=1&mine=1&tz=${tz === PAY_TZ ? "manila" : "pacific"}`);
       mym.at = Date.now();
     } catch (e) { mym.data = { configured: true, error: e.message }; }
     if (!DEMO && mym.data && (!mym.data.configured || mym.data.error)) {
