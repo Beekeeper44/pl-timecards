@@ -321,6 +321,8 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .sxsg b{font-size:13px;text-transform:uppercase;letter-spacing:.04em} .sxsg span{font-size:12.5px;color:var(--muted)} .sxsg.or b{color:#0ea5a4} .sxsg.pl b{color:var(--green)}
 .sxsn{font-size:12.5px;color:var(--muted)} .sxsn b{color:var(--text)}
 .sxst{width:100%;min-width:0!important;border-collapse:collapse;font-size:13px} .sxst td{padding:4px 4px;border-bottom:1px solid var(--line)} .sxst td.n{text-align:right;font-weight:700} .sxst tr.sum td{font-weight:800;border-bottom:0}
+.sbtn.sadm{display:inline-flex;align-items:center;gap:5px;color:var(--blue)!important;background:var(--blueSoft)!important;border-color:color-mix(in srgb,var(--blue) 55%,var(--line2))!important;cursor:default}
+.sbtn.sadm svg{width:14px;height:14px} .sbtn.sadm small{display:none}
 .tcscope{margin:0 0 12px}
 .tcscope .pill-count{margin-left:6px}
 .ttpanel .weekhead{padding:16px 18px 6px;align-items:flex-start;gap:16px}
@@ -3730,6 +3732,9 @@ dialog::backdrop{background:var(--scrim)}
   const SCHED = [["5H", "s5"], ["6H", "s6"], ["CS", "scs"], ["OS", "sos"], ["NS", "sns"]];
   const codeOn = c => ((shiftCfg.habits || DEFAULT_HABITS)[c] || {}).enabled !== false;
   const SCHED_ON = () => SCHED.filter(([c]) => codeOn(c));
+  const adminAnyTime = m => !!m && m.role === "admin" && ((shiftCfg.flexDepts || []).includes("Admins") || (shiftCfg.flexDepts || []).includes(m.dept));
+  const schedFor = m => SCHED_ON().filter(([c]) => !(c === "CS" && adminAnyTime(m)));   // CS isn't offered to admins who already clock in any time
+  const adminChip = m => adminAnyTime(m) ? `<span class="sbtn sadm sel" title="Admins can clock in any time (Time Clock Setup › Clock in any time)">${ADMICO}Admin<small>any time</small></span>` : "";
   const levelWord = r => r == null ? "" : "Level " + (1 + r * 0.5);
   const jobTitleOf = m => m.jobTitle || titleOf(m) || "";
   const fmtClock = ms => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }).format(new Date(ms));
@@ -3783,7 +3788,7 @@ dialog::backdrop{background:var(--scrim)}
       <div class="hclock"><div class="htime" id="heroTime">${fmtClock(t)}</div><div class="hdate">${fmtLongDate(t)}</div>${shiftCfg.enabled && isFlex(m) ? FLEX_LINE : shiftCfg.enabled ? `<div class="hshift">Shift ${shiftLabel(shiftCfg, tz)}${tz !== PAY_TZ ? ` <span class="dim">· ${shiftLabel(shiftCfg, PAY_TZ)} Manila</span>` : ""}</div>` : ""}</div>
       <div class="hbtns">${btns}</div>
       ${stat}
-      ${!isAdmin() ? "" : `<div class="hsched"><span class="hl">Schedule</span>${SCHED_ON().map(([c, k]) => `<button class="sbtn ${k} ${codes.includes(c) ? "sel" : ""}" data-sched="${c}" aria-pressed="${codes.includes(c)}" ${c === "CS" && isFlexTeam(m) ? 'disabled title="Always on for the CS team"' : `title="${esc(schedTip(c, t))}"`}>${c}${codes.includes(c) ? " ✓" : ""}</button>`).join("")}
+      ${!isAdmin() ? "" : `<div class="hsched"><span class="hl">Schedule</span>${adminChip(m)}${schedFor(m).map(([c, k]) => `<button class="sbtn ${k} ${codes.includes(c) ? "sel" : ""}" data-sched="${c}" aria-pressed="${codes.includes(c)}" ${c === "CS" && isFlexTeam(m) ? 'disabled title="Always on for the CS team"' : `title="${esc(schedTip(c, t))}"`}>${c}${codes.includes(c) ? " ✓" : ""}</button>`).join("")}
         <span class="sdiv"></span><button class="sbtn preset" data-sched-set="5H,6H">5H+6H</button><button class="sbtn preset" data-sched-set="">✕ Clear</button></div>`}
     </div>`;
   }
@@ -6116,7 +6121,7 @@ dialog::backdrop{background:var(--scrim)}
         <div class="pcl-nums"><div><span>Today</span><b>${hm(workedToday)}</b></div><div><span>This week</span><b>${hm(weekTot)}</b></div></div>
         <div class="hbtns">${btns}</div>
       </div>
-      ${!admin ? (codesRowHtml(codes, now()) ? `<div class="pcl-sched">${codesRowHtml(codes, now())}</div>` : "") : `<div class="hsched pcl-sched"><span class="hl">Schedule today</span>${SCHED_ON().map(([c, k]) => `<button class="sbtn ${k} ${codes.includes(c) ? "sel" : ""}" data-psched="${c}" aria-pressed="${codes.includes(c)}" ${canCodes && !(c === "CS" && isFlexTeam(m)) ? "" : "disabled"} title="${c === "CS" && isFlexTeam(m) ? "Always on for the CS team" : esc(schedTip(c, t))}">${c}${codes.includes(c) ? " ✓" : ""}</button>`).join("")}
+      ${!admin ? (codesRowHtml(codes, now()) ? `<div class="pcl-sched">${codesRowHtml(codes, now())}</div>` : "") : `<div class="hsched pcl-sched"><span class="hl">Schedule today</span>${adminChip(m)}${schedFor(m).map(([c, k]) => `<button class="sbtn ${k} ${codes.includes(c) ? "sel" : ""}" data-psched="${c}" aria-pressed="${codes.includes(c)}" ${canCodes && !(c === "CS" && isFlexTeam(m)) ? "" : "disabled"} title="${c === "CS" && isFlexTeam(m) ? "Always on for the CS team" : esc(schedTip(c, t))}">${c}${codes.includes(c) ? " ✓" : ""}</button>`).join("")}
         <span class="sdiv"></span><button class="sbtn preset" data-psched-set="5H,6H" ${canCodes ? "" : "disabled"}>5H+6H</button><button class="sbtn preset" data-psched-set="" ${canCodes ? "" : "disabled"}>✕ Clear</button>
         ${admin && !self ? `<span class="note pcl-note">Turning on 5H or 6H lets ${esc(m.name.split(" ")[0])} clock in at that habit time today. CS lets them clock in any time today.</span>` : ""}</div>`}
     </div>`;
