@@ -216,3 +216,6 @@ Metrics also covers people Metabase has who aren’t app users (the Oregon revie
 
 
 Metrics tables keep their header (Crop · Data · … · Total, with the team colors) pinned at the top while you scroll through people; the table scrolls inside its card.
+
+
+**Review questions:** Reviews › **📝 Questions** (also in New review cycle) shows the self review questions (with hints; {Y} = year reviewed, {N} = next year), the manager statements (1–5 votes) and the open question. Admins can edit, add or remove them and Save, or **Reset to the original questions**. New self reviews and manager reviews use the saved questions; reviews already sent keep theirs.

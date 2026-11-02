@@ -308,6 +308,11 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .tccode{display:flex;flex-direction:column;align-items:flex-start;gap:6px} .tcr.tcoff > span:not(.tccode){opacity:.4}
 .tcclr{display:block;margin-top:2px;font-size:12px}
 .mxteam{font:inherit;font-size:12px;background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:1px 4px;margin-left:2px}
+.wrapchips{flex-wrap:wrap!important;gap:6px!important} #dlgCycle .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} #dlgCycle .dlg{overflow-x:hidden}
+.rqpill{justify-self:start}
+#dlgQuestions .dlg{gap:14px} .rqsec{display:grid;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel2)}
+.rqrow{display:grid;grid-template-columns:22px minmax(0,1fr) 28px;gap:8px;align-items:start} .rqn{font-weight:700;color:var(--muted);padding-top:9px;text-align:right}
+.rqf{display:grid;gap:4px} .rqf textarea[data-rq$="h"]{font-size:13px;color:var(--muted)} .rqf textarea{min-height:0;resize:vertical} .rqsec .btn.sm{justify-self:start}
 .tcscope{margin:0 0 12px}
 .tcscope .pill-count{margin-left:6px}
 .ttpanel .weekhead{padding:16px 18px 6px;align-items:flex-start;gap:16px}
@@ -1982,7 +1987,7 @@ dialog::backdrop{background:var(--scrim)}
 
       <!-- REVIEWS -->
       <section id="view-reviews" hidden>
-        <div class="pagehead"><h1 class="pageh">Reviews</h1><div class="toolbar" style="margin:0"><button class="btn sm" id="updNew">Add update</button><button class="btn sm primary" id="cycleNew">New review cycle</button></div></div>
+        <div class="pagehead"><h1 class="pageh">Reviews</h1><div class="toolbar" style="margin:0"><button class="btn sm" data-openq>📝 Questions</button><button class="btn sm" id="updNew">Add update</button><button class="btn sm primary" id="cycleNew">New review cycle</button></div></div>
         <div id="reviewsBody"></div>
       </section>
 
@@ -2232,7 +2237,14 @@ dialog::backdrop{background:var(--scrim)}
     <div class="btns spread"><button class="btn danger" value="deletemt" id="mtCancel">Delete 1:1</button><span class="grow"></span><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn" value="done" id="mtDone">Mark done</button><button class="btn primary" value="save">Save</button></div>
   </form>
 </dialog>
-<dialog id="dlgCycle">
+<dialog id="dlgQuestions" class="wide">
+  <form class="dlg" method="dialog">
+    <h2>Review questions</h2>
+    <div id="rqBody"></div>
+    <div class="btns spread"><button class="btn" type="button" id="rqReset">Reset to the original questions</button><span class="grow"></span><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" value="save" id="rqSave">Save questions</button></div>
+  </form>
+</dialog>
+<dialog id="dlgCycle" class="wide">
   <form class="dlg" method="dialog">
     <h2>New review cycle</h2>
     <div class="two"><label>Name<input class="field" id="ncName" maxlength="60" required placeholder="e.g. Year End Review"></label><label>Type<select class="field" id="ncKind"><option>Performance</option><option>Probation</option><option>Promotion</option></select></label></div>
@@ -2240,7 +2252,8 @@ dialog::backdrop{background:var(--scrim)}
     <div class="two"><label>Period start<input class="field" type="date" id="ncStart"></label><label>Period end<input class="field" type="date" id="ncEnd"></label></div>
     <div class="two"><label>Self reviews due<input class="field" type="date" id="ncDue"></label><label>Year End Reviews due<input class="field" type="date" id="ncRevDue"></label></div>
     <div class="note" style="margin-top:-6px">Managers can send their reviews before or after this date.</div>
-    <label>Teams included<div class="daychips" id="ncDepts"></div></label>
+    <label>Teams included<div class="daychips wrapchips" id="ncDepts"></div></label>
+    <button type="button" class="btn sm rqpill" data-openq>📝 See and edit the questions</button>
     <div class="note">Everyone active in these teams gets a review. Their manager is the reviewer. Nothing is sent yet: after you start the cycle, use <b>Send self review</b> (one person or everyone) to email them the questions.</div>
     <div class="btns"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Start cycle</button></div>
   </form>
@@ -2720,7 +2733,7 @@ dialog::backdrop{background:var(--scrim)}
         meetings: (D.meetings || []).filter(x => admin || x.managerId === D.meId || x.memberId === D.meId).map(x => ({ ...JSON.parse(JSON.stringify(x)), privateNotes: admin || x.managerId === D.meId ? x.privateNotes : null })),
         cycles: (D.cycles || []).map(x => ({ ...x })),
         deleted: admin ? (D.deleted || []).map(x => ({ ...x })) : [],
-        demoOnLogin: !!D.demoOnLogin, metricsTeams: { ...(D.metricsTeams || {}) },
+        demoOnLogin: !!D.demoOnLogin, reviewQuestions: D.reviewQuestions || null, metricsTeams: { ...(D.metricsTeams || {}) },
         announcements: (D.announcements = (D.announcements || []).filter(x => x.at > Date.now() - 7 * 86400000)).map(x => ({ ...x })),
         reviews: (D.reviews || []).filter(r => admin || r.memberId === D.meId || r.reviewerId === D.meId).map(r => { const full = admin || r.reviewerId === D.meId || r.status === "shared"; return { ...r, rating: full ? r.rating : null, strengths: full ? r.strengths : null, growth: full ? r.growth : null, goals: full ? r.goals : null }; }),
         updates: (D.pupdates || []).filter(u => admin || u.authorId === D.meId || (u.memberId === D.meId && u.shared) || D.members.find(x => x.id === u.memberId)?.managerId === D.meId).sort((a, b) => b.at - a.at).map(u => ({ ...u })),
@@ -2841,6 +2854,7 @@ dialog::backdrop{background:var(--scrim)}
       }
       case "resetPin": D.members.find(x => x.id === b.id).hasPin = false; return { ok: true };
       case "inviteLinks": return { ok: true, links: (b.ids || []).map(id => D.members.find(x => x.id === id)).filter(Boolean).map(m => { if (!m.hasPin && !m.invitedAt) m.invitedAt = Date.now(); return { id: m.id, name: m.name, email: m.email, signedUp: !!m.hasPin, link: `https://pl-time-cards.vercel.app/?join=demo-${m.id.slice(0, 8)}` }; }) };
+      case "reviewQuestions": D.reviewQuestions = b.reset ? null : { self: b.self, mgr: b.mgr, extra: b.extra }; return { ok: true };
       case "metricsTeam": D.metricsTeams = { ...(D.metricsTeams || {}), [String(b.name).trim().toLowerCase()]: b.dept || "" }; return { ok: true };
       case "demoSetting": D.demoOnLogin = !!b.on; return { ok: true, on: !!b.on };
       case "memberDelete": { const m0 = D.members.find(x => x.id === b.id); if (!m0) derr(404, "That person is already gone."); if (b.id === D.meId) derr(400, "You can’t delete your own account.");
@@ -2914,7 +2928,7 @@ dialog::backdrop{background:var(--scrim)}
   let lastLoadAt = 0, lastRev = null;
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
-    deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxTeams = { ...MX_TEAM_DEFAULTS, ...(d.metricsTeams || {}) }; me = d.me; members = d.members;
+    applyReviewQuestions(d.reviewQuestions); deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxTeams = { ...MX_TEAM_DEFAULTS, ...(d.metricsTeams || {}) }; me = d.me; members = d.members;
     if (!DEMO && me && me.role === "admin" && members.length < 5 && !autoImportTried) { autoImportTried = true; setTimeout(autoImportTeam, 0); } live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
@@ -4278,7 +4292,7 @@ dialog::backdrop{background:var(--scrim)}
   const selfName = n => /review/i.test(n || "") ? n.replace(/\b(review)\b/i, "Self $1") : `${n || "Review"} Self Review`;
   const kindOf = c => c?.kind || "Performance";
   // Self review questions. {Y} is the year being reviewed (the cycle's period), {N} the year after.
-  const SELF_QS = [
+  const DEFAULT_SELF_QS = [
     ["What were some of your biggest highlights in {Y}?", "Give examples: projects, numbers or wins you’re proud of, and the difference they made."],
     ["What are a few of your lowlights from {Y}? How did you handle the situation, and what (if anything) would you have done differently?", "Give an example of a specific situation and what you learned from it."],
     ["How do you feel you’ve grown or developed professionally over the past year?", "Give examples: new skills, responsibilities, or situations that pushed you."],
@@ -4286,14 +4300,55 @@ dialog::backdrop{background:var(--scrim)}
     ["What career milestone or personal best are you aiming for next year?", "Give an example, like a level, a target number or a skill you want to master."]
   ];
   // Manager review: a 1–5 vote on each statement (from the PL review form).
-  const MGR_QS = [
+  const DEFAULT_MGR_QS = [
     "The employee produces accurate, thorough, and high-quality work that elevates the team’s output.",
     "The employee communicates clearly and respectfully, actively listens, and contributes meaningfully to cross-functional discussions.",
     "The employee follows through on commitments, meets deadlines, and manages their work responsibly with minimal oversight.",
     "The employee takes ownership, improves processes, and goes beyond assigned duties to raise the bar for quality and impact.",
     "The employee collaborates well across teams (Engineering, Marketing, Ops, etc.), supports those around them, and adds positively to the team’s overall energy and morale."
   ];
-  const EXTRA_Q = "What additional information (if any) do you have for the employee?";
+  const DEFAULT_EXTRA_Q = "What additional information (if any) do you have for the employee?";
+  // The questions in use (Reviews › Questions can change them; reviews already written keep the questions they were written with).
+  let SELF_QS = DEFAULT_SELF_QS, MGR_QS = DEFAULT_MGR_QS, EXTRA_Q = DEFAULT_EXTRA_Q;
+  function applyReviewQuestions(v) {
+    SELF_QS = v && v.self && v.self.length ? v.self.map(x => [x[0], x[1] || ""]) : DEFAULT_SELF_QS;
+    MGR_QS = v && v.mgr && v.mgr.length ? v.mgr : DEFAULT_MGR_QS;
+    EXTRA_Q = v && v.extra ? v.extra : DEFAULT_EXTRA_Q;
+  }
+  // ---------- Questions window ----------
+  let rqDraft = null;
+  document.addEventListener("click", e => { if (e.target.closest("[data-openq]")) { e.preventDefault(); openQuestions(); } });
+  let rqWired = false;
+  function openQuestions() {
+    if (!rqWired) { wireQuestionsDialog(); rqWired = true; }
+    rqDraft = { self: SELF_QS.map(x => [x[0], x[1]]), mgr: MGR_QS.slice(), extra: EXTRA_Q };
+    drawQuestions(); $("dlgQuestions").showModal();
+  }
+  function wireQuestionsDialog() {
+    $("dlgQuestions").addEventListener("close", async () => { if ($("dlgQuestions").returnValue !== "save") return;
+      const self = rqDraft.self.filter(x => x[0].trim()), mgr = rqDraft.mgr.filter(x => x.trim());
+      if (!self.length || !mgr.length) { toast("Keep at least one self review question and one manager statement"); setTimeout(() => $("dlgQuestions").showModal(), 0); return; }
+      await run(() => dataCall({ op: "reviewQuestions", self, mgr, extra: rqDraft.extra }), "Review questions saved"); });
+    $("rqReset").onclick = async () => { if (!await askConfirm("Go back to the original questions? Reviews already sent keep theirs.")) return;
+      $("dlgQuestions").close(); await run(() => dataCall({ op: "reviewQuestions", reset: true }), "Back to the original questions"); };
+  }
+  function drawQuestions() {
+    const edit = isAdmin(), ta = (id, v, rows = 2, ph = "") => `<textarea class="field ta" rows="${rows}" ${edit ? "" : "readonly"} data-rq="${id}" placeholder="${esc(ph)}">${esc(v)}</textarea>`;
+    $("rqBody").innerHTML = `
+      <div class="rqsec"><div class="rqh"><b>Self review</b> <span class="dim">· the team member answers these. {Y} = the year reviewed, {N} = next year.</span></div>
+        ${rqDraft.self.map((x, i) => `<div class="rqrow"><span class="rqn">${i + 1}</span><div class="rqf">${ta(`s${i}q`, x[0], 2, "Question")}${ta(`s${i}h`, x[1], 2, "Hint shown under it (optional)")}</div>${edit ? `<button type="button" class="xbtn" data-rqdel="s${i}" aria-label="Remove">✕</button>` : ""}</div>`).join("")}
+        ${edit ? `<button type="button" class="btn sm" data-rqadd="s">＋ Add question</button>` : ""}</div>
+      <div class="rqsec"><div class="rqh"><b>Manager review</b> <span class="dim">· the manager votes 1–5 on each statement; the average is the overall rating.</span></div>
+        ${rqDraft.mgr.map((x, i) => `<div class="rqrow"><span class="rqn">${i + 1}</span><div class="rqf">${ta(`m${i}`, x, 2, "Statement")}</div>${edit ? `<button type="button" class="xbtn" data-rqdel="m${i}" aria-label="Remove">✕</button>` : ""}</div>`).join("")}
+        ${edit ? `<button type="button" class="btn sm" data-rqadd="m">＋ Add statement</button>` : ""}
+        <div class="rqrow"><span class="rqn">${rqDraft.mgr.length + 1}</span><div class="rqf">${ta("x", rqDraft.extra, 2, "Open question")}<small class="dim">Typed answer, optional</small></div></div></div>
+      <div class="note">${edit ? "Changes apply to self reviews you send and manager reviews written from now on. Reviews already sent or written keep their questions." : "Only admins can change the questions."}</div>`;
+    $("rqBody").querySelectorAll("[data-rq]").forEach(t => t.oninput = () => { const k = t.dataset.rq;
+      if (k === "x") rqDraft.extra = t.value; else if (k[0] === "m") rqDraft.mgr[+k.slice(1)] = t.value; else { const i = +k.slice(1, -1); rqDraft.self[i][k.endsWith("q") ? 0 : 1] = t.value; } });
+    $("rqBody").querySelectorAll("[data-rqdel]").forEach(b => b.onclick = () => { const k = b.dataset.rqdel; if (k[0] === "m") rqDraft.mgr.splice(+k.slice(1), 1); else rqDraft.self.splice(+k.slice(1), 1); drawQuestions(); });
+    $("rqBody").querySelectorAll("[data-rqadd]").forEach(b => b.onclick = () => { if (b.dataset.rqadd === "m") rqDraft.mgr.push(""); else rqDraft.self.push(["", ""]); drawQuestions(); });
+    $("rqSave").hidden = $("rqReset").hidden = !edit;
+  }
   const bulletsHtml = t => { const lines = String(t || "").split("\n"); let out = "", open = [];
     const close = to => { while (open.length > to) { out += "</ul>"; open.pop(); } };
     lines.forEach(l => { const m = /^(\s*)([-•*·o]\s+)(.*)$/.exec(l);

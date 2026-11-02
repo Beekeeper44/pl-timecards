@@ -229,10 +229,11 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
+      const reviewQuestions = (await sql`select value from settings where key = 'review_questions'`)[0]?.value || null;
       const metricsTeams = (await sql`select value from settings where key = 'metrics_teams'`)[0]?.value || {};
       const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -847,6 +848,18 @@ export default async function handler(req, res) {
             }
           }
         } catch (e) { if (e.code === "23505") return fail(res, 409, "Someone else already uses that email."); throw e; }
+        return send(res, 200, { ok: true });
+      }
+      case "reviewQuestions": {
+        // The questions used for new self reviews and manager reviews (Reviews › Questions). Empty = back to the built-in ones.
+        const clean = (x, n) => String(x || "").replace(/\s+/g, " ").trim().slice(0, n);
+        const self = (Array.isArray(b.self) ? b.self : []).map(x => [clean(x?.[0] ?? x?.q, 400), clean(x?.[1] ?? x?.hint, 300)]).filter(x => x[0]).slice(0, 12);
+        const mgr = (Array.isArray(b.mgr) ? b.mgr : []).map(x => clean(x, 400)).filter(Boolean).slice(0, 12);
+        const extra = clean(b.extra, 300);
+        const v = b.reset ? null : { self, mgr, extra };
+        if (v && (!self.length || !mgr.length)) return fail(res, 400, "Keep at least one self review question and one manager statement.");
+        if (v) await sql`insert into settings (key, value) values ('review_questions', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+        else await sql`delete from settings where key = 'review_questions'`;
         return send(res, 200, { ok: true });
       }
       case "metricsTeam": {

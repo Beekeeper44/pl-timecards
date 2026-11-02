@@ -240,6 +240,12 @@ const [ann] = await q("select * from announcements order by created_at desc limi
 ok(ann && !ann.err && /Holiday/.test(ann.body), "announcement text saved");
 ok(ann && (ann.image || ann.image_data || ann.img), "announcement image saved");
 
+step("9b. Review questions can be changed");
+r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });
+let rq = (await A.get({ week: "" })).body.reviewQuestions; ok(r.status === 200 && rq.self[0][0] === "Proudest win in {Y}?" && rq.mgr.length === 1, "custom questions saved");
+r = await K.op({ op: "reviewQuestions", self: [["x", ""]], mgr: ["y"] }); ok(r.status === 403, "only admins can change questions");
+await A.op({ op: "reviewQuestions", reset: true }); rq = (await A.get({ week: "" })).body.reviewQuestions; ok(rq === null, "reset goes back to the original questions");
+
 // 10. Reviews end to end
 step("10. Year End Review: cycle, self review, manager votes, send");
 r = await A.op({ op: "cycleCreate", name: "Year End Review", kind: "Performance", periodStart: "2026-01-01", periodEnd: "2026-12-31", due: "2026-11-15", reviewDue: "2027-01-21", depts: ["Analysts"] });
