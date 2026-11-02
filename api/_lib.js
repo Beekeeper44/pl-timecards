@@ -180,7 +180,8 @@ async function migrate() {
     // Metabase results are cached in the database for an hour so every server instance shares one copy.
     await sql`create table if not exists mb_cache (card_id int primary key, fetched_at timestamptz not null default now(), rows jsonb not null)`;
     await sql`alter table meetings add column if not exists link text`;   // Google Meet (or Zoom/Teams) link for the 1:1
-    await sql`alter table members add column if not exists meet_link text`;   // this person's usual 1:1 meeting link (used when they book a 1:1)
+    await sql`alter table members add column if not exists meet_link text`;
+    await sql`alter table members add column if not exists anytime_off boolean not null default false`;   // admin switched their "any time" off   // this person's usual 1:1 meeting link (used when they book a 1:1)
     // One-time: Alan's usual Google Meet room, also on his upcoming 1:1s that don't have a link yet.
     const [ml] = await sql`insert into settings (key, value) values ('meet_link_alan_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (ml) {

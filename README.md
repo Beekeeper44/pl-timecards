@@ -228,4 +228,4 @@ Metabase’s `WORK_DATE` is a Pacific date. With the top bar on **🇺🇸 Pacif
 **Side by side:** in Metrics › Cards by task (Day), **⇆ Side by side** shows a 🇺🇸 Pacific day next to a 🇵🇭 Manila day, each grouped Oregon (Review) and PL · Manila team with their shift times and totals. **Same work** lines up the same shifts (Pacific D ↔ Manila D+1, e.g. Mon Nov 2 PT ↔ Tue Nov 3 Manila); **Same date** shows the same calendar date in both zones. The regular table stays below.
 
 
-Schedule row: an admin who can clock in any time (Time Clock Setup › Clock in any time › **Admins**) sees a blue **🛡 Admin** chip instead of **CS** on their My Time card and profile. Others still see CS.
+Schedule row: an admin who can clock in any time (Time Clock Setup › Clock in any time › **Admins**) sees a **🛡 Admin** chip instead of **CS** that switches their own “clock in any time” on (blue, ✓) or off (normal shift times, Late / Left early apply; saved per admin in `members.anytime_off`) on their My Time card and profile (both the badge under their name and the Schedule row), and Schedule overview / Live day don’t show CS for them either. Others still see CS.

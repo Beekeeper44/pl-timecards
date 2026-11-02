@@ -159,7 +159,7 @@ export default async function handler(req, res) {
       const members$ = admin
         ? sql`select id, name, email, phone, dept, role, active, pin_hash is not null as "hasPin", round(extract(epoch from invited_at) * 1000)::float8 as "invitedAt",
             manager_id as "managerId", rung, tier, to_char(start_date, 'YYYY-MM-DD') as "startDate",
-            job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", pay_type as "payType", overtime,
+            job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", pay_type as "payType", overtime,
             salary::float8 as salary, allowance::float8 as allowance , round(extract(epoch from photo_at) * 1000)::float8 as "photoV", org_solo as "orgSolo" from members order by name`
         : sql`select id, name, dept, role, active, manager_id as "managerId",
             rung, case when id = ${me.id} then tier end as tier,
@@ -274,8 +274,8 @@ export default async function handler(req, res) {
         // Normal shift: team members can only clock in inside the window admins set. Admins are exempt.
         const [sch] = await sql`select codes from schedules where member_id = ${mid} and day = (now() at time zone ${PAY_TZ})::date`;
         const shiftNow = await getShift();
-        const [who] = await sql`select dept, role from members where id = ${mid}`;
-        const flex = (shiftNow.flexDepts || []).includes(who?.dept) || ((shiftNow.flexDepts || []).includes("Admins") && who?.role === "admin");
+        const [who] = await sql`select dept, role, anytime_off from members where id = ${mid}`;
+        const flex = (shiftNow.flexDepts || []).includes(who?.dept) || ((shiftNow.flexDepts || []).includes("Admins") && who?.role === "admin" && !who?.anytime_off);
         const chk = flex ? { ok: true, late: false } : clockInCheck(shiftNow, Date.now(), sch?.codes || []);
         if (!chk.ok && !admin) return fail(res, 403, chk.message);
         try {
@@ -300,8 +300,8 @@ export default async function handler(req, res) {
         const sh = await getShift();
         const [who] = await sql`select dept from members where id = ${mid}`;
         const [sc] = await sql`select codes from schedules where member_id = ${mid} and day = (select day from shifts where id = ${s.id})`;
-        const [wr] = await sql`select role from members where id = ${mid}`;
-        const by = (sh.flexDepts || []).includes(who?.dept) || ((sh.flexDepts || []).includes("Admins") && wr?.role === "admin") || ((sc?.codes || []).includes("CS") && sh.habits?.CS?.enabled !== false) ? 0 : earlyOutBy(sh, row.in_ms, now, row.kind || null);
+        const [wr] = await sql`select role, anytime_off from members where id = ${mid}`;
+        const by = (sh.flexDepts || []).includes(who?.dept) || ((sh.flexDepts || []).includes("Admins") && wr?.role === "admin" && !wr?.anytime_off) || ((sc?.codes || []).includes("CS") && sh.habits?.CS?.enabled !== false) ? 0 : earlyOutBy(sh, row.in_ms, now, row.kind || null);
         await sql`update shifts set breaks = ${JSON.stringify(breaks.map(x => x.e == null ? { ...x, e: now } : x))}::jsonb,
           clock_out = now(), left_early = ${by > 0}, early_by = ${by || null}, device_out = ${device}, updated_at = now() where id = ${s.id}`;
         if (by > 0) await tellManager(mid, `clocked out ${by} min early`, row.kind ? (sh.habits?.[row.kind]?.label || row.kind) : "Normal shift", null);
@@ -829,7 +829,7 @@ export default async function handler(req, res) {
             }
             const has = k => f[k] !== undefined;
             const [before] = await sql`select name, email, phone, dept, role, active, manager_id as "managerId", rung, tier,
-              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
+              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
             if (!before) return fail(res, 404, "That person isn’t on the roster.");
             await sql`update members set
               name = coalesce(${name ?? null}, name), email = coalesce(${email ?? null}, email),
@@ -853,7 +853,7 @@ export default async function handler(req, res) {
               where id = ${b.id}`;
             // Profile history: one row per field that actually changed.
             const [after] = await sql`select name, email, phone, dept, role, active, manager_id as "managerId", rung, tier,
-              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
+              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
             const str = v => v == null ? null : String(v);
             for (const k of Object.keys(after)) {
               if (str(before[k]) !== str(after[k]))
@@ -862,6 +862,13 @@ export default async function handler(req, res) {
           }
         } catch (e) { if (e.code === "23505") return fail(res, 409, "Someone else already uses that email."); throw e; }
         return send(res, 200, { ok: true });
+      }
+      case "adminAnyTime": {
+        // Admin chip on the Schedule row: an admin can switch their own (or another admin's) "clock in any time" on or off.
+        const [t] = await sql`select id, role from members where id = ${b.memberId}`;
+        if (!t || t.role !== "admin") return fail(res, 400, "Only admins have this switch.");
+        await sql`update members set anytime_off = ${!b.on} where id = ${t.id}`;
+        return send(res, 200, { ok: true, on: !!b.on });
       }
       case "reviewQuestions": {
         // The questions used for new self reviews and manager reviews (Reviews › Questions). Empty = back to the built-in ones.

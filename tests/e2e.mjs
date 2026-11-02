@@ -252,6 +252,12 @@ mn = await A.get({ production: "1", tz: "manila", range: "day", date: "2026-11-0
 ok(/Bueno:40/.test(nm(mn.body)) && !/Austin/.test(nm(mn.body)), `Manila Nov 2 = Metabase Nov 1, no cross-over (${nm(mn.body)})`);
 ok(pt.body.rows.find(r => r.name === "Kaity Paul")?.memberId == null, "an Oregon reviewer is never matched to a PL person by a similar name");
 
+step("8d. Admin “any time” switch");
+r = await A.op({ op: "adminAnyTime", memberId: alan.id, on: false });
+let [aon] = await q("select anytime_off from members where id=$1", [alan.id]); ok(r.status === 200 && aon.anytime_off === true, "admin switches their any-time off");
+r = await K.op({ op: "adminAnyTime", memberId: alan.id, on: true }); ok(r.status === 403, "team members can't change it");
+r = await A.op({ op: "adminAnyTime", memberId: alan.id, on: true }); [aon] = await q("select anytime_off from members where id=$1", [alan.id]); ok(aon.anytime_off === false, "and back on");
+
 // 9. Announcements with an image
 step("9. Announcement with an image");
 r = await A.op({ op: "annPost", body: "Holiday party Friday!", image: png });

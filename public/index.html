@@ -321,8 +321,9 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .sxsg b{font-size:13px;text-transform:uppercase;letter-spacing:.04em} .sxsg span{font-size:12.5px;color:var(--muted)} .sxsg.or b{color:#0ea5a4} .sxsg.pl b{color:var(--green)}
 .sxsn{font-size:12.5px;color:var(--muted)} .sxsn b{color:var(--text)}
 .sxst{width:100%;min-width:0!important;border-collapse:collapse;font-size:13px} .sxst td{padding:4px 4px;border-bottom:1px solid var(--line)} .sxst td.n{text-align:right;font-weight:700} .sxst tr.sum td{font-weight:800;border-bottom:0}
-.sbtn.sadm{display:inline-flex;align-items:center;gap:5px;color:var(--blue)!important;background:var(--blueSoft)!important;border-color:color-mix(in srgb,var(--blue) 55%,var(--line2))!important;cursor:default}
-.sbtn.sadm svg{width:14px;height:14px} .sbtn.sadm small{display:none}
+.sbtn.sadm{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.sbtn.sadm.sel{color:var(--blue)!important;background:var(--blueSoft)!important;border-color:color-mix(in srgb,var(--blue) 55%,var(--line2))!important}
+.sbtn.sadm svg{width:14px;height:14px} .hcode.admc{color:var(--blue)} .hcode.admc svg{width:16px;height:16px;color:var(--blue)} .hcode.admc b{color:var(--blue)} .sbtn.sadm small{display:none}
 .tcscope{margin:0 0 12px}
 .tcscope .pill-count{margin-left:6px}
 .ttpanel .weekhead{padding:16px 18px 6px;align-items:flex-start;gap:16px}
@@ -2759,7 +2760,7 @@ dialog::backdrop{background:var(--scrim)}
         const ua = navigator.userAgent, dev = /iPad/i.test(ua) || b.touchMac ? "iPad" : /iPhone|iPod/i.test(ua) ? "iPhone" : /Android/i.test(ua) ? (/Mobile/i.test(ua) ? "Android phone" : "Android tablet") : IS_PHONE ? "Phone" : "Computer";
         if (!admin && b.memberId !== D.meId) derr(403, "You can only clock yourself in and out.");
         const s = findOpen(b.memberId);
-        if (b.kind === "in") { if (s) derr(409, "Already clocked in."); const who = D.members.find(x => x.id === b.memberId); const chk = (D.shift.flexDepts || []).includes(who?.dept) || ((D.shift.flexDepts || []).includes("Admins") && who?.role === "admin") ? { ok: true } : inCheck(D.shift, t, D.sched[b.memberId] || []); if (!chk.ok && !admin) derr(403, `Clock in opens ${fmtWhen(chk.next, PAY_TZ)} Manila time.`); D.shifts.push({ id: did(), memberId: b.memberId, day: tday, in: t, out: null, open: true, breaks: [], breakMin: null, note: "", edited: false, late: !!chk.late, lateBy: chk.lateBy || null, countFrom: chk.countFrom || null, kind: chk.habit || null, deviceIn: dev }); }
+        if (b.kind === "in") { if (s) derr(409, "Already clocked in."); const who = D.members.find(x => x.id === b.memberId); const chk = (D.shift.flexDepts || []).includes(who?.dept) || ((D.shift.flexDepts || []).includes("Admins") && who?.role === "admin" && !who?.anytimeOff) ? { ok: true } : inCheck(D.shift, t, D.sched[b.memberId] || []); if (!chk.ok && !admin) derr(403, `Clock in opens ${fmtWhen(chk.next, PAY_TZ)} Manila time.`); D.shifts.push({ id: did(), memberId: b.memberId, day: tday, in: t, out: null, open: true, breaks: [], breakMin: null, note: "", edited: false, late: !!chk.late, lateBy: chk.lateBy || null, countFrom: chk.countFrom || null, kind: chk.habit || null, deviceIn: dev }); }
         else if (!s) derr(409, "Not clocked in.");
         else if (b.kind === "break" || b.kind === "lunch") { if (s.breaks.some(x => x.e == null)) derr(409, "Already on a break."); s.breaks.push({ s: t, e: null, t: b.kind, ds: dev }); }
         else if (b.kind === "back") s.breaks.forEach(x => { if (x.e == null) { x.e = t; x.de = dev; } });
@@ -2864,6 +2865,7 @@ dialog::backdrop{background:var(--scrim)}
       }
       case "resetPin": D.members.find(x => x.id === b.id).hasPin = false; return { ok: true };
       case "inviteLinks": return { ok: true, links: (b.ids || []).map(id => D.members.find(x => x.id === id)).filter(Boolean).map(m => { if (!m.hasPin && !m.invitedAt) m.invitedAt = Date.now(); return { id: m.id, name: m.name, email: m.email, signedUp: !!m.hasPin, link: `https://pl-time-cards.vercel.app/?join=demo-${m.id.slice(0, 8)}` }; }) };
+      case "adminAnyTime": { const m0 = D.members.find(x => x.id === b.memberId); if (!m0 || m0.role !== "admin") derr(400, "Only admins have this switch."); m0.anytimeOff = !b.on; return { ok: true }; }
       case "reviewQuestions": D.reviewQuestions = b.reset ? null : { self: b.self, mgr: b.mgr, extra: b.extra }; return { ok: true };
       case "metricsTeam": D.metricsTeams = { ...(D.metricsTeams || {}), [String(b.name).trim().toLowerCase()]: b.dept || "" }; return { ok: true };
       case "demoSetting": D.demoOnLogin = !!b.on; return { ok: true, on: !!b.on };
@@ -3486,7 +3488,7 @@ dialog::backdrop{background:var(--scrim)}
     return !(md.includes(m.dept) || (md.includes("Admins") && m.role === "admin")); };
   const PHONE_MSG = "Clock in and out from a laptop or desktop computer. On your phone you can still view your time, request time off and read updates.";
   // Teams on flexible hours (CS by default) can clock in any time: no window, no Late / Left early flags.
-  const isFlexTeam = m => !!m && ((shiftCfg.flexDepts || []).includes(m.dept) || ((shiftCfg.flexDepts || []).includes("Admins") && m.role === "admin"));
+  const isFlexTeam = m => !!m && ((shiftCfg.flexDepts || []).includes(m.dept) || ((shiftCfg.flexDepts || []).includes("Admins") && m.role === "admin" && !m.anytimeOff));
   const isFlex = m => isFlexTeam(m) || (m && ((m.id === me?.id ? mySched : schedToday[m.id]) || []).includes("CS"));
   const FLEX_LINE = `<div class="hshift flex">Flexible hours · clock in any time</div>`;
   const LA = "America/Los_Angeles";
@@ -3722,7 +3724,8 @@ dialog::backdrop{background:var(--scrim)}
   }
 
   // Today's codes under the title: chip + name + times (e.g. "5H 5 AM Habit · 12:50 – 1:55 PM").
-  function codesRowHtml(codes, t) {
+  function codesRowHtml(codes, t, m) {
+    if (m && adminAnyTime(m)) { const rest = codesRowHtml(codes.filter(c => c !== "CS"), t); return `<span class="hcode admc">${ADMICO}<b>Admin</b><span class="dim">any time today</span></span>${rest}`; }
     const list = SCHED.filter(([c]) => (codes || []).includes(c)); if (!list.length) return "";
     return `<div class="hcodes">${list.map(([c, k]) => { const h = habitOf(c); const w = h.time ? (habitWins(shiftCfg, [c], t)[0] || habitWins(shiftCfg, [c], t - 86400000)[0]) : null;
       return `<span class="hcode"><span class="schip ${k}">${c}</span><b>${esc(h.label)}</b>${h.anytime ? '<span class="dim">any time today</span>' : w ? `<span class="dim">${fmtTime(w.start)}${h.end ? ` – ${fmtTime(w.end)}` : ""}</span>` : ""}</span>`; }).join("")}</div>`;
@@ -3732,9 +3735,14 @@ dialog::backdrop{background:var(--scrim)}
   const SCHED = [["5H", "s5"], ["6H", "s6"], ["CS", "scs"], ["OS", "sos"], ["NS", "sns"]];
   const codeOn = c => ((shiftCfg.habits || DEFAULT_HABITS)[c] || {}).enabled !== false;
   const SCHED_ON = () => SCHED.filter(([c]) => codeOn(c));
-  const adminAnyTime = m => !!m && m.role === "admin" && ((shiftCfg.flexDepts || []).includes("Admins") || (shiftCfg.flexDepts || []).includes(m.dept));
-  const schedFor = m => SCHED_ON().filter(([c]) => !(c === "CS" && adminAnyTime(m)));   // CS isn't offered to admins who already clock in any time
-  const adminChip = m => adminAnyTime(m) ? `<span class="sbtn sadm sel" title="Admins can clock in any time (Time Clock Setup › Clock in any time)">${ADMICO}Admin<small>any time</small></span>` : "";
+  // Admins get an Admin chip instead of CS when "Admins" is on in Clock in any time; each admin can switch theirs on or off.
+  const adminChipShown = m => !!m && m.role === "admin" && (shiftCfg.flexDepts || []).includes("Admins");
+  const adminAnyTime = m => adminChipShown(m) && !m.anytimeOff;
+  const schedFor = m => SCHED_ON().filter(([c]) => !(c === "CS" && adminChipShown(m)));
+  const adminChip = m => !adminChipShown(m) ? "" : `<button type="button" class="sbtn sadm ${m.anytimeOff ? "" : "sel"}" data-admany="${m.id}" aria-pressed="${!m.anytimeOff}" title="${m.anytimeOff ? "Off: normal shift times apply. Click to clock in any time." : "On: clock in any time. Click to use normal shift times."}">${ADMICO}Admin${m.anytimeOff ? "" : " ✓"}<small>any time</small></button>`;
+  document.addEventListener("click", e => { const b = e.target.closest("[data-admany]"); if (!b) return; e.preventDefault();
+    const m = memberById(b.dataset.admany); if (!m) return; const on = !!m.anytimeOff; m.anytimeOff = !on;
+    run(() => dataCall({ op: "adminAnyTime", memberId: m.id, on }), on ? `${m.name.split(" ")[0]} can clock in any time` : `${m.name.split(" ")[0]} follows normal shift times`); });
   const levelWord = r => r == null ? "" : "Level " + (1 + r * 0.5);
   const jobTitleOf = m => m.jobTitle || titleOf(m) || "";
   const fmtClock = ms => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }).format(new Date(ms));
@@ -3757,9 +3765,9 @@ dialog::backdrop{background:var(--scrim)}
     const todayShifts = live.filter(s => s.memberId === m.id && s.day === today);
     const workedToday = todayShifts.reduce((a, s) => a + workedMs(s, t), 0);
     const toToday = !open && offOn(m.id, today);
-    const codes = isFlexTeam(m) ? [...new Set([...(mySched || []), "CS"])] : (mySched || []);
+    const codes = adminAnyTime(m) ? (mySched || []).filter(c => c !== "CS") : isFlexTeam(m) ? [...new Set([...(mySched || []), "CS"])] : (mySched || []);   // any-time admins show the Admin chip, not CS
     const chips = "";
-    const codeRow = codesRowHtml(codes, t);
+    const codeRow = codesRowHtml(codes, t, m);
     const gone = dismissed();
     const notice = timeOff.filter(r => r.memberId === m.id && ["approved", "denied"].includes(r.status) && r.decidedAt && t - r.decidedAt < 14 * 86400000 && !gone.has(r.id))
       .sort((a, b) => b.decidedAt - a.decidedAt)[0];
@@ -4975,7 +4983,7 @@ dialog::backdrop{background:var(--scrim)}
       const codesFor = (mid, d) => (rng.sched.find(x => x.memberId === mid && x.day === d)?.codes || []);
       const isWork = d => shiftCfg.days.includes((new Date(d + "T00:00:00Z").getUTCDay() || 7));
       $("schBody").innerHTML = rng.loading ? `<div class="empty"><b>Loading…</b></div>` : `<div class="tablewrap"><table class="ttable schtable"><thead><tr><th>Team member</th>${days.map(d => `<th class="${d === today ? "today" : ""}">${fmtDayKey(d, { weekday: "short", day: "numeric" })}</th>`).join("")}</tr></thead><tbody>
-        ${people.map(m => `<tr>${nameCell(m)}${days.map(d => { const codes = isFlexTeam(m) ? [...new Set([...codesFor(m.id, d), "CS"])] : codesFor(m.id, d); const ss = rng.shifts.filter(s => s.memberId === m.id && s.day === d); const ms = ss.reduce((a, s) => a + workedMs(s, t), 0); const off = offOn(m.id, d);
+        ${people.map(m => `<tr>${nameCell(m)}${days.map(d => { const codes = adminAnyTime(m) ? codesFor(m.id, d).filter(c => c !== "CS") : isFlexTeam(m) ? [...new Set([...codesFor(m.id, d), "CS"])] : codesFor(m.id, d); const ss = rng.shifts.filter(s => s.memberId === m.id && s.day === d); const ms = ss.reduce((a, s) => a + workedMs(s, t), 0); const off = offOn(m.id, d);
           return `<td class="schcell ${d === today ? "today" : ""} ${!isWork(d) && !codes.length ? "offday" : ""}" ${isAdmin() ? `data-sch="${m.id}|${d}" tabindex="0"` : ""}>
             <div class="schc">${codes.map(c => `<span class="schip ${(SCHED.find(x => x[0] === c) || [])[1] || ""}">${c}</span>`).join("")}${!codes.length && isWork(d) && shiftCfg.enabled ? '<span class="schip sreg">Shift</span>' : ""}${off ? `<span class="offtag">${esc(off.type)}</span>` : ""}</div>
             ${ms ? `<small>${hm(ms)} worked</small>` : ""}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="8" class="rqempty">No one here.</td></tr>`}
@@ -5029,7 +5037,7 @@ dialog::backdrop{background:var(--scrim)}
         const ss = byMem[m.id] || [];
         const { reg } = weekCalc(ss, t); const regMs = Object.values(reg).reduce((a, v) => a + v, 0);
         const total = ss.reduce((a, s) => a + workedMs(s, t), 0), appr = ss.filter(s => s.approval === "approved").reduce((a, s) => a + workedMs(s, t), 0);
-        const open = openFor(m.id); const codes = isFlexTeam(m) ? [...new Set([...(schedToday[m.id] || []), "CS"])] : (schedToday[m.id] || []);
+        const open = openFor(m.id); const codes = adminAnyTime(m) ? (schedToday[m.id] || []).filter(c => c !== "CS") : isFlexTeam(m) ? [...new Set([...(schedToday[m.id] || []), "CS"])] : (schedToday[m.id] || []);   // any-time admins show the Admin chip, not CS
         return { regMs, total, appr, open, codes, off: !open && offOn(m.id, today), late: ss.filter(x => x.late).length, early: ss.filter(x => x.leftEarly).length, earlyIn: ss.filter(x => earlyIn(x)).length,
           devN: ss.filter(x => offDesk(x.deviceIn) || offDesk(x.deviceOut)).length, lateMin: ss.reduce((a, x) => a + (x.late ? x.lateBy || 0 : 0), 0), earlyMin: ss.reduce((a, x) => a + (x.leftEarly ? x.earlyBy || 0 : 0), 0) };
       };
@@ -6087,7 +6095,7 @@ dialog::backdrop{background:var(--scrim)}
   function profileClockHtml(m) {
     const t = now(); const self = m.id === me.id; const admin = isAdmin();
     const codes0 = self ? (mySched || []) : (schedToday[m.id] || []);
-    const codes = isFlexTeam(m) ? [...new Set([...codes0, "CS"])] : codes0;
+    const codes = adminAnyTime(m) ? codes0.filter(c => c !== "CS") : isFlexTeam(m) ? [...new Set([...codes0, "CS"])] : codes0;
     const open = openFor(m.id); const brk = open && onBreak(open);
     const todayShifts = live.filter(s => s.memberId === m.id && s.day === today);
     const workedToday = todayShifts.reduce((a, s) => a + workedMs(s, t), 0);
