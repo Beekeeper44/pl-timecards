@@ -14,8 +14,17 @@ const MB_ROWS = [
   { WORK_DATE: "2026-11-02", FULL_NAME: "Kaity Paul", REVIEW_CARDS: 47, CROP_CARDS: 2, TOTAL_CARDS: 115, TEAM: "Review" },
   { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", REVIEW_CARDS: 0, CROP_CARDS: 51, TOTAL_CARDS: 51, TEAM: "PL" },
   { WORK_DATE: "2026-11-01", FULL_NAME: "Benedict Bueno", REVIEW_CARDS: 0, CROP_CARDS: 40, TOTAL_CARDS: 40, TEAM: "PL" },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Ian f", REVIEW_CARDS: 0, CROP_CARDS: 21, TOTAL_CARDS: 278, TEAM: "PL" },
 ];
-globalThis.fetch = async (url, opt) => { if (String(url).includes("mb.test/api/card/")) return new Response(JSON.stringify(MB_ROWS), { status: 200 });
+const OT_ROWS = [
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", SHIFT_HOUR: "All hours", CROP_CARDS: 30, TOTAL_CARDS: 30 },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", SHIFT_HOUR: "10 PM – 11 PM", CROP_CARDS: 20, TOTAL_CARDS: 20 },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", SHIFT_HOUR: "11 PM – 12 AM", CROP_CARDS: 10, TOTAL_CARDS: 10 },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Carmela Alvaro", SHIFT_HOUR: "All hours", CROP_CARDS: 5, TOTAL_CARDS: 5 },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Carmela Alvaro", SHIFT_HOUR: "10 PM – 11 PM", CROP_CARDS: 5, TOTAL_CARDS: 5 },
+];
+globalThis.fetch = async (url, opt) => { if (String(url).includes("mb.test/api/card/46762")) return new Response(JSON.stringify(OT_ROWS), { status: 200 });
+  if (String(url).includes("mb.test/api/card/")) return new Response(JSON.stringify(MB_ROWS), { status: 200 });
   if (String(url).includes("resend")) { sent.push(JSON.parse(opt.body)); return new Response(JSON.stringify({ id: "x" }), { status: 200 }); } throw new Error("unexpected fetch " + url); };
 const auth = (await import("./api/auth.js")).default, data = (await import("./api/data.js")).default, health = (await import("./api/health.js")).default;
 const { __pool: pool } = await import("@neondatabase/serverless");
@@ -96,6 +105,7 @@ const [{ n: memN2 }] = await q("select count(*)::int n from members");
 ok(memN2 === memN, "running the import again doesn't create duplicates");
 const [khimRow] = await q("select * from members where email='khim.arcilla@precisionlabeling.com'");
 ok(khimRow && khimRow.dept === "Analysts", "Khim saved in Analysts");
+{ const [pc] = await q("select dept, job_title from members where email='princess.c@precisionlabeling.com'"); ok(pc && pc.dept === "Grading" && pc.job_title === "Grading Annotator 1", `Princess Cabalar is in Grading (${pc?.dept})`); }
 ok(khimRow.work_location === "Philippines", `team members' location is Philippines (${khimRow.work_location})`);
 const [alanLoc] = await q("select work_location from members where email='alan@arenaclub.com'"); ok(alanLoc.work_location !== "Philippines", "Alan's location isn't changed");
 sent.length = 0;
@@ -250,7 +260,19 @@ let mn = await A.get({ production: "1", tz: "manila", range: "day", date: "2026-
 ok(/Austin Crawford:136/.test(nm(mn.body)) && /Bueno:51/.test(nm(mn.body)) && !/Bueno:40/.test(nm(mn.body)), `Manila Nov 3 = Metabase (Pacific) Nov 2 (${nm(mn.body)})`);
 mn = await A.get({ production: "1", tz: "manila", range: "day", date: "2026-11-02" });
 ok(/Bueno:40/.test(nm(mn.body)) && !/Austin/.test(nm(mn.body)), `Manila Nov 2 = Metabase Nov 1, no cross-over (${nm(mn.body)})`);
+{ const [ianf] = await q("select id from members where email='ianf@precisionlabeling.com'"); const ir = pt.body.rows.find(r => r.name === "Ian f");
+  ok(ianf && ir && ir.memberId === ianf.id, "Metabase “Ian f” matches Ian Rey Yandra Fajardo (ianf@), not another Ian"); }
 ok(pt.body.rows.find(r => r.name === "Kaity Paul")?.memberId == null, "an Oregon reviewer is never matched to a PL person by a similar name");
+
+step("8c2. Overtime board (admins only)");
+let otr = await A.get({ production: "1", card: "overtime", tz: "pacific", range: "day", date: "2026-11-02" });
+ok(otr.status === 200 && otr.body.slots.join("|") === "10 PM – 11 PM|11 PM – 12 AM", `overtime hours in order from the end of the shift (${otr.body.slots})`);
+ok(otr.body.rows.find(r => /Bueno/.test(r.name))?.total === 30, "All hours uses Metabase’s All hours rows");
+otr = await A.get({ production: "1", card: "overtime", tz: "pacific", range: "day", date: "2026-11-02", slot: "2" });
+ok(otr.body.rows.length === 1 && otr.body.rows[0].total === 10, "2 hr shows only the 11 PM – 12 AM hour");
+otr = await A.get({ production: "1", card: "overtime", tz: "manila", range: "day", date: "2026-11-03", slot: "1" });
+ok(otr.body.rows.length === 2, "Manila Nov 3 shows the same overtime as Pacific Nov 2");
+otr = await K.get({ production: "1", card: "overtime" }); ok(otr.status === 403, "team members can’t see overtime");
 
 step("8d. Admin “any time” switch");
 r = await A.op({ op: "adminAnyTime", memberId: alan.id, on: false });
@@ -277,6 +299,19 @@ ok(r.status === 200, "announcement posted");
 const [ann] = await q("select * from announcements order by created_at desc limit 1").catch(e => [{ err: e.message }]);
 ok(ann && !ann.err && /Holiday/.test(ann.body), "announcement text saved");
 ok(ann && (ann.image || ann.image_data || ann.img), "announcement image saved");
+
+step("9a. An admin being reviewed fills in the self review, not the manager part");
+{ const [ka] = await q("select id from members where name='Karl Calma'");
+  if (ka) { await pool.query("update members set role='admin', manager_id=$2 where id=$1", [ka.id, alan.id]);
+    r = await A.op({ op: "cycleCreate", name: "Admin check", kind: "Performance", periodStart: "2026-01-01", periodEnd: "2026-12-31", due: "2026-11-15", reviewDue: "2027-01-21", depts: ["Managers"] });
+    const [kr] = await q("select r.id from reviews r join review_cycles c on c.id=r.cycle_id where c.name='Admin check' and r.member_id=$1", [ka.id]);
+    ok(kr, "Karl (an admin) gets a review with Alan as reviewer");
+    if (kr) { await pool.query("update members set pin_hash=null where id=$1", [ka.id]);
+      const KC = new Client(); const em = (await q("select email from members where id=$1", [ka.id]))[0].email;
+      await A.op({ op: "resetPin", id: ka.id }); const tokR = await A.op({ op: "inviteLinks", ids: [ka.id] }); const tk = new URL(tokR.body.links[0].link).searchParams.get("join");
+      await KC.auth({ action: "join", token: tk }); await KC.auth({ action: "createPin", pin: "Manager2026", phone: "+639171112222" });
+      r = await KC.op({ op: "reviewSave", id: kr.id, answers: [{ q: "Statement", rating: 5 }] });
+      ok(r.status === 403, "Karl can't fill in his own manager review"); } } }
 
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });

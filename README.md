@@ -212,7 +212,7 @@ Metrics: a Metabase name that isn’t on the team list shows **not on the team l
 Metrics also covers people Metabase has who aren’t app users (the Oregon reviewers **Lea, Dustin, Mikayla, Kaity, Jordan Hunt, Lulu, Austin and Arman**, are **Team Oregon**, their own pill in Metrics; first names match whatever last name Metabase shows; **Princess Cordova** counts under **Grading**). Their rows show “Oregon · from Metabase”, count in the Oregon pill and averages, and admins can change the team with the small **Set team** menu on the row (saved in `settings.metrics_teams`), or add them as app users.
 
 
-**Same person, different name:** Metabase’s “Patrick Emerson” is **Pat Castillo** (Review), so those numbers are combined under Pat (`NAME_ALIASES` in `api/_lib.js`; add more there if needed).
+**Same person, different name:** Metabase’s “Patrick Emerson” is **Pat Castillo** (Review), so those numbers are combined under Pat; likewise “Princess Cordova” / “Cess Cordova” is **Princess Cabalar**, now in **Grading** (Grading Annotator 1, reports to Ehm Crucillo) (`NAME_ALIASES` in `api/_lib.js`; add more there if needed).
 
 
 Metrics tables keep their header (Crop · Data · … · Total, with the team colors) pinned at the top while you scroll through people; the table scrolls inside its card.
@@ -235,3 +235,13 @@ Metrics: when a single team pill is picked, the table also lists that team’s p
 
 
 **Habit sessions for any-time people:** admins and the CS team can clock in any time, but a session that starts in a habit window (5 AM Habit, 6 PM Habit, Night shift) is still recorded as that habit instead of a Normal shift (no Late / Left early). **Edit shift › Shift type** fixes any session (Normal shift, 5 AM Habit, 6 PM Habit, Night shift).
+
+
+**Who fills in what:** the person a review is about always gets the **self review** questions (admins too), and their reviewer (manager) gets the 1–5 manager review. Nobody can write their own manager review; the server refuses it.
+
+
+## Overtime board (admins only)
+Metrics › **Team · Overtime · Personal** pills (admins): **Overtime** opens the overtime board. Overtime reads Metabase question **46762** (same columns as Cards by task plus `SHIFT_HOUR`, e.g. “10 PM – 11 PM”) and shows the same table, with hour pills: **All hours · 1 hr · 2 hr · 3 hr · 4 hr**, counted from the end of the normal shift (1 hr = 10–11 PM PT, 2 hr = 11 PM–12 AM…). Metabase hours are Pacific; on 🇵🇭 Manila the pills show Manila hours (1 hr = 2–3 PM) and the days follow the same Pacific/Manila rule as Cards by task, so toggling keeps the numbers the same. “All hours” uses Metabase’s All hours rows when present. Team members can’t open it (the server refuses).
+
+
+**Name matching (Metabase → team):** exact names, then aliases, then the email name (“Ian f” = ianf@…), then partial names; a single letter must be an initial of one of their names (“Ian B” → Ian Benedict Banua); if two people match equally well the row isn’t guessed (it shows as not on the team list).

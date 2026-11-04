@@ -188,6 +188,13 @@ async function migrate() {
       await sql`update members set meet_link = 'https://meet.google.com/ara-qmvp-frj' where lower(email) = 'alan@arenaclub.com' and meet_link is null`;
       await sql`update meetings set link = 'https://meet.google.com/ara-qmvp-frj' where link is null and status = 'scheduled' and manager_id in (select id from members where lower(email) = 'alan@arenaclub.com')`;
     }
+    // One-time: undo the earlier mistaken switch of Cards by task to 46762 (that question is the Overtime board).
+    const [q46] = await sql`insert into settings (key, value) values ('cards_q46531_back_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (q46) await sql`update settings set value = jsonb_set(value, '{cardId}', '46531'::jsonb) where key = 'production' and (value->>'cardId') = '46762'`;
+    // One-time: Princess Cabalar (Metabase: Princess / Cess Cordova) moved from Data to Grading, reporting to Ehm Crucillo.
+    const [pc] = await sql`insert into settings (key, value) values ('princess_grading_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (pc) await sql`update members set dept = 'Grading', job_title = 'Grading Annotator 1',
+      manager_id = coalesce((select id from members where name = 'Ehm Crucillo' limit 1), manager_id) where lower(email) = 'princess.c@precisionlabeling.com'`;
     // One-time: everyone except Alan works in the Philippines.
     const [loc] = await sql`insert into settings (key, value) values ('location_ph_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (loc) await sql`update members set work_location = 'Philippines' where lower(email) <> 'alan@arenaclub.com' and (work_location is null or work_location ilike 'manila' or work_location = '')`;
@@ -440,6 +447,8 @@ export const getRev = async () => { try { const [r] = await sql`select (case whe
 // Set METABASE_HOST and METABASE_SECRET_KEY (Metabase › Admin › Embedding › Static embedding) to show dashboards on Metrics.
 // The PL daily cards question (arena-club.metabaseapp.com/question/46531) is used unless an admin picks another.
 export const DEFAULT_CARDS_QUESTION = 46531;
+// Overtime cards by shift hour (question/46762: same columns plus SHIFT_HOUR, e.g. "10 PM – 11 PM"), admins only.
+export const DEFAULT_OVERTIME_QUESTION = 46762;
 export const metabaseReady = () => !!(MB_HOST() && process.env.METABASE_SECRET_KEY);
 export function metabaseEmbedUrl(kind, id, params = {}) {
   const site = (MB_HOST() || "").replace(/\/+$/, ""), key = process.env.METABASE_SECRET_KEY;
@@ -475,15 +484,23 @@ export async function metabaseCardRows(cardId, force = false) {
 }
 // Match a name from Metabase (e.g. "Benedict Bueno", "Carmela Alvaro") to a roster member ("Ben Bueno", "Ma. Carmela A. Alvaro").
 // Metabase names that are a different spelling of someone on the team (same person, numbers combined under them).
-export const NAME_ALIASES = { "patrick emerson": "Pat Castillo", "pat emerson": "Pat Castillo" };
+export const NAME_ALIASES = { "patrick emerson": "Pat Castillo", "pat emerson": "Pat Castillo", "princess cordova": "Princess Cabalar", "cess cordova": "Princess Cabalar" };
 export function matchMember(name, members) {
   const alias = NAME_ALIASES[String(name || "").trim().toLowerCase()];
   if (alias) { const hit = members.find(m => String(m.name || "").trim().toLowerCase() === alias.toLowerCase()); if (hit) return hit; name = alias; }
-  const toks = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(t => t.length > 1 || /^[a-z]$/.test(t) === false);
-  const a = toks(name).filter(t => t.length > 1); if (!a.length) return null;
+  const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const all = norm(name).replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(Boolean);
+  const a = all.filter(t => t.length > 1), inits = all.filter(t => t.length === 1);   // "Ian f" → words ["ian"], initials ["f"]
+  if (!a.length) return null;
+  // Metabase sometimes shows the email name ("Ian f" = ianf@…): letters of the name = letters before the @
+  const flat = all.join("");
+  const byEmail = members.filter(m => m.email && norm(m.email).split("@")[0].replace(/[^a-z]/g, "") === flat);
+  if (byEmail.length === 1) return byEmail[0];
   let best = null, bestScore = 0, tie = false;
   for (const m of members) {
-    const b = toks(m.name).filter(t => t.length > 1); if (!b.length) continue;
+    const b = norm(m.name).replace(/[^a-z\s-]/g, " ").split(/[\s-]+/).filter(t => t.length > 1); if (!b.length) continue;
+    // every initial must be the first letter of one of their other names ("Ian f" → a name starting with F)
+    if (inits.length && !inits.every(ch => b.slice(1).some(t => t[0] === ch))) continue;
     let score = 0;
     if (a.join(" ") === b.join(" ")) score = 100;
     else if (a.every(t => b.includes(t))) score = 80;                                   // "Adrian Carlo" ⊂ "Adrian Carlo Sanchez Pangga"
@@ -496,7 +513,8 @@ export function matchMember(name, members) {
     }
     if (score > bestScore) { bestScore = score; best = m; tie = false; } else if (score && score === bestScore) tie = true;
   }
-  return bestScore >= 60 || (bestScore === 50 && !tie) ? best : null;
+  if (bestScore === 100) return best;
+  return !tie && bestScore >= 50 ? best : null;   // two equally good matches (e.g. "Ian" with two Ians) → don't guess
 }
 
 // ---------- sign-up invites ----------

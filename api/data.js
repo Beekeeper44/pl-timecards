@@ -1,4 +1,4 @@
-import { renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
+import { DEFAULT_OVERTIME_QUESTION, renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
 
 const dayOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || "");
 // Meeting link: an https web address (Google Meet, Zoom, Teams…); "meet.google.com/abc-defg-hij" gets https:// added.
@@ -45,8 +45,11 @@ export default async function handler(req, res) {
     }
     // Cards today: per-person card counts by task from a saved Metabase question (?production=1&date=YYYY-MM-DD).
     if (req.method === "GET" && req.query.production) {
-      const [cfg] = await sql`select value from settings where key = 'production'`;
-      const c = cfg ? (cfg.value || {}) : { cardId: DEFAULT_CARDS_QUESTION };   // no setting saved yet → the PL cards question
+      // ?card=overtime: the Overtime board (admins only), same layout, filtered by overtime hour (?slot=1..4)
+      const ot = req.query.card === "overtime";
+      if (ot && !admin) return fail(res, 403, "Only admins can see overtime.");
+      const [cfg] = await sql`select value from settings where key = ${ot ? "overtime" : "production"}`;
+      const c = cfg ? (cfg.value || {}) : { cardId: ot ? DEFAULT_OVERTIME_QUESTION : DEFAULT_CARDS_QUESTION };   // no setting saved yet → the built-in question
       if (!c.cardId) return send(res, 200, { configured: false });
       // Metabase's WORK_DATE is a Pacific date. ?tz=manila shows Manila days: a Manila day D holds WORK_DATE D−1
       // (the PL shift 1:50–10:10 PM PT = 5:50 AM–2:10 PM Manila next day; Oregon's 8:45–5:15 PT = 12:45–9:15 AM Manila next day).
@@ -66,10 +69,22 @@ export default async function handler(req, res) {
       const mbTeam = r => String(r[teamCol] ?? "").trim();
       const oregonRow = r => /^review$/i.test(mbTeam(r));
       const days = [...new Set(data.rows.map(r => toDay(r[dateCol])).filter(Boolean))].sort();
-      const roster = await sql`select id, name, manager_id from members where active`;
+      const roster = await sql`select id, name, email, manager_id from members where active`;
       const team = admin ? null : new Set([me.id]);   // only admins see the team; everyone else sees just their own numbers
       const num = v => typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
       data = { ...data, rows: data.rows.filter(r => !isTotalRow(r)) };
+      // Overtime: SHIFT_HOUR is a Pacific clock hour ("10 PM – 11 PM"). Slots go in order from the end of the shift (1 hr, 2 hr…).
+      let slots = [];
+      if (ot) {
+        const hourCol = c.hourCol || "SHIFT_HOUR", isAll = v => /^\s*all/i.test(String(v || ""));
+        const startH = v => { const m = /(\d{1,2})(?::\d{2})?\s*([ap])/i.exec(String(v || "")); if (!m) return 99; return (+m[1] % 12) + (/p/i.test(m[2]) ? 12 : 0); };
+        const shEnd = (await getShift()).end || "22:10", endH = +String(shEnd).split(":")[0];   // normal shift ends 10:10 PM PT → 1 hr = 10–11 PM
+        const order = v => (startH(v) - endH + 24) % 24;
+        slots = [...new Set(data.rows.map(r => r[hourCol]).filter(v => v && !isAll(v)))].sort((a, b) => order(a) - order(b));
+        const slot = Math.max(0, Math.min(slots.length, parseInt(req.query.slot || "0", 10) || 0));
+        const hasAll = data.rows.some(r => isAll(r[hourCol]));
+        data = { ...data, cols: data.cols.filter(k => k !== hourCol), rows: data.rows.filter(r => slot ? r[hourCol] === slots[slot - 1] : (hasAll ? isAll(r[hourCol]) : !isAll(r[hourCol]))) };
+      }
       const taskCols = data.cols.filter(k => k !== nameCol && k !== dateCol && k !== totalCol && k !== teamCol && data.rows.some(r => r[k] !== null && r[k] !== "" && Number.isFinite(num(r[k]))));
       // Oregon reviewers aren't on the PL list: never match them to a PL person by a similar name
       const matchRow = r => oregonRow(r) ? (roster.find(m => m.name.trim().toLowerCase() === String(r[nameCol] || "").trim().toLowerCase()) || null) : matchMember(r[nameCol], roster);
@@ -103,7 +118,7 @@ export default async function handler(req, res) {
       }
       const rows = [...byKey.values()].map(r => ({ ...r, days: r.days.size }));
       res.setHeader("Cache-Control", "no-store");
-      return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, nextRefresh: data.at + 3600000, range, date: anchor, from, to, today, tz: manila ? "manila" : "pacific",
+      return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, slots, overtime: ot, nextRefresh: data.at + 3600000, range, date: anchor, from, to, today, tz: manila ? "manila" : "pacific",
         days: days.slice(-120), columns: taskCols, rows, fetchedAt: data.at });
     }
     // Metrics: the Metabase dashboards this person may see, with fresh signed embed links (?metrics=1).
@@ -418,6 +433,8 @@ export default async function handler(req, res) {
         return send(res, 200, { ok: true });
       }
       if (!(admin || r.reviewer_id === me.id)) return fail(res, 403, "Only the reviewer can write this review.");
+      // Nobody writes their own manager review (even an admin): they fill in the self review; their manager writes this part.
+      if (r.member_id === me.id && r.reviewer_id !== me.id) return fail(res, 403, "Your manager writes this part. You fill in your self review.");
       const share = !!b.share;
       // Manager review = a 1–5 vote on each statement (sent with its wording); the overall rating is their average.
       const mgr = Array.isArray(b.answers) ? b.answers.slice(0, 12).map(x => ({ q: String(x?.q || "").slice(0, 400), rating: Number.isInteger(x?.rating) && x.rating >= 1 && x.rating <= 5 ? x.rating : null })).filter(x => x.q) : null;
