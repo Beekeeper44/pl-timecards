@@ -5533,7 +5533,9 @@ dialog::backdrop{background:var(--scrim)}
         : `${cur ? "This month · " : ""}${fmtDayKey(f, { month: "long", year: "numeric" })}`; };
     const dayLabel = rng === "day" ? (isCur ? "today" : fmtDayKey(from, { weekday: "short", month: "short", day: "numeric" })) : rng === "week" ? (isCur ? "this week" : `${short(from)} – ${short(to)}`) : (isCur ? "this month" : fmtDayKey(from, { month: "long" }));
     // Period choices: every day / week / month Metabase has, plus the current one even before any cards are in.
-    const periodKeys = [...new Set([...(d.days || []), today].filter(Boolean).map(k => periodOf(rng, k)[0]))].sort().reverse();
+    // Every day / week / month back about two months is in the menu (plus any older day Metabase has), so earlier days can always be picked.
+    const recent = Array.from({ length: rng === "day" ? 62 : rng === "week" ? 10 : 3 }, (_, i) => rng === "month" ? shiftMonth(today.slice(0, 8) + "01", -i) : addDays(today, rng === "week" ? -7 * i : -i));
+    const periodKeys = [...new Set([...(d.days || []), ...recent, today].filter(Boolean).map(k => periodOf(rng, k)[0]))].filter(k => k <= today).sort().reverse();
     // team members: just their own numbers
     if (!admin && !lead) {
       const r = rows[0];
@@ -5563,7 +5565,9 @@ dialog::backdrop{background:var(--scrim)}
       })()}
       <div class="rpanel"><div class="tchead"><div class="wtitle">${pr.card === "overtime" ? "Overtime cards" : "Cards by task"} <span class="dim">· ${esc(periodName(rng, from))} · ${rows.length} people</span></div>
         <div class="seg" role="group" aria-label="Period">${[["day", "Day"], ["week", "Week"], ["month", "Month"]].map(([k, l]) => `<button data-prr="${k}" aria-pressed="${rng === k}">${l}</button>`).join("")}</div>
+        <button class="btn sm" id="prPrev" title="Previous ${rng}" ${periodKeys.indexOf(from) >= periodKeys.length - 1 ? "disabled" : ""}>‹</button>
         <select class="field sm" id="prDate" aria-label="${rng === "day" ? "Day" : rng === "week" ? "Week" : "Month"}">${periodKeys.map(x => `<option value="${x}" ${x === from ? "selected" : ""}>${esc(periodName(rng, x))}</option>`).join("")}</select>
+        <button class="btn sm" id="prNext" title="Next ${rng}" ${periodKeys.indexOf(from) <= 0 ? "disabled" : ""}>›</button>
         <input class="search" id="prQ" type="search" placeholder="Search name" value="${esc(pr.q)}" aria-label="Search">
         ${rng === "day" && pr.card !== "overtime" ? `<button class="btn sm ${sxs.on ? "primary" : ""}" id="prSxs" title="Pacific day next to its Manila day">⇆ Side by side</button>` : ""}
         <span class="grow"></span><span class="dim" style="font-size:13px">${d.sample ? "Demo data" : `From Metabase · updated ${ago(d.fetchedAt)} · refreshes hourly`}</span><button class="btn sm" id="prCsv">Export CSV</button></div>
@@ -5584,6 +5588,9 @@ dialog::backdrop{background:var(--scrim)}
     if (root.querySelector("#prSxs")) root.querySelector("#prSxs").onclick = () => { sxs.on = !sxs.on; renderMetrics(); };
     root.querySelectorAll("[data-sxsall]").forEach(b => b.onclick = () => { sxs.all = true; renderMetrics(); });
     root.querySelectorAll("[data-sxsl]").forEach(b => b.onclick = () => { sxs.line = b.dataset.sxsl; sxs.key = ""; renderMetrics(); });
+    const stepDay = dir => { const opts = [...root.querySelector("#prDate").options].map(o => o.value), i = opts.indexOf(root.querySelector("#prDate").value), k = opts[i - dir];
+      if (k) { pr.date = k; pr.data = null; renderMetrics(); loadProduction(true); } };
+    if (root.querySelector("#prPrev")) { root.querySelector("#prPrev").onclick = () => stepDay(-1); root.querySelector("#prNext").onclick = () => stepDay(1); }
     root.querySelector("#prDate").onchange = e => { pr.date = e.target.value; pr.data = null; renderMetrics(); loadProduction(true); };
     // Day / Week / Month: start on the current period.
     root.querySelectorAll("[data-prr]").forEach(b => b.onclick = () => { if (pr.range === b.dataset.prr) return; pr.range = b.dataset.prr; pr.date = null; pr.data = null; renderMetrics(); loadProduction(true); });

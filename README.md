@@ -248,3 +248,6 @@ Metrics › **Team · Overtime · Personal** pills (admins): **Overtime** opens 
 
 
 **Unsend:** in a review cycle, a sent self review has **Unsend** under “Sent …” (closes it for them until you send it again; anything they typed is kept; once they’ve submitted, use **Unlock** instead), and a sent manager review has **Unsend** under “Sent” (back to a draft they can’t see). Reviewer or admin only.
+
+
+Metrics day menus (Team and Overtime) list every day back about two months (weeks: 10, months: 3) plus any older day Metabase has, with **‹ ›** buttons to step to the previous / next day, week or month.
