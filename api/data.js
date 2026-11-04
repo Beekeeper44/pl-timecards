@@ -1,4 +1,4 @@
-import { earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
+import { renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
 
 const dayOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || "");
 // Meeting link: an https web address (Google Meet, Zoom, Teams…); "meet.google.com/abc-defg-hij" gets https:// added.
@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     }
     const me = await currentUser(req);
     if (!me) return fail(res, 401, "Signed out");
+    renewSession(req, res, me);   // keep active people signed in
     const admin = me.role === "admin";
     // Late / left early: tell the person's manager (or the admins if they have none), in the app and by email.
     const tellManager = async (mid, what, shiftName, startMs) => {
@@ -242,11 +243,12 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
+      const idleSignout = +((await sql`select value from settings where key = 'idle_signout'`)[0]?.value || 0);
       const reviewQuestions = (await sql`select value from settings where key = 'review_questions'`)[0]?.value || null;
       const metricsTeams = (await sql`select value from settings where key = 'metrics_teams'`)[0]?.value || {};
       const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -276,7 +278,10 @@ export default async function handler(req, res) {
         const shiftNow = await getShift();
         const [who] = await sql`select dept, role, anytime_off from members where id = ${mid}`;
         const flex = (shiftNow.flexDepts || []).includes(who?.dept) || ((shiftNow.flexDepts || []).includes("Admins") && who?.role === "admin" && !who?.anytime_off);
-        const chk = flex ? { ok: true, late: false } : clockInCheck(shiftNow, Date.now(), sch?.codes || []);
+        // Any-time people (CS team, admins) never get Late or a blocked clock-in, but a session in a habit window
+        // (5H / 6H / NS) is still recorded as that habit, not as a normal shift.
+        const hab = flex ? clockInCheck({ ...shiftNow, enabled: true }, Date.now(), ["5H", "6H", "NS"].filter(c => shiftNow.habits?.[c]?.time && shiftNow.habits?.[c]?.enabled !== false)) : null;
+        const chk = flex ? { ok: true, late: false, habit: hab?.ok && hab.habit ? hab.habit : null } : clockInCheck(shiftNow, Date.now(), sch?.codes || []);
         if (!chk.ok && !admin) return fail(res, 403, chk.message);
         try {
           await sql`insert into shifts (member_id, day, clock_in, late, kind, count_from, late_by, device_in) values (${mid}, (now() at time zone ${PAY_TZ})::date, now(), ${!!chk.late}, ${chk.habit || null},
@@ -570,6 +575,7 @@ export default async function handler(req, res) {
         if (!Number.isFinite(inMs)) return fail(res, 400, "Clock in is required.");
         if (outMs != null && (outMs <= inMs || outMs - inMs > 24 * 3600e3)) return fail(res, 400, "Clock out has to be after clock in and within 24 hours.");
         const note = String(b.note || "").slice(0, 140);
+        const kindSet = b.kind !== undefined, kind = ["5H", "6H", "NS"].includes(b.kind) ? b.kind : null;   // Edit shift › Shift type
         const inTs = new Date(inMs).toISOString(), outTs = outMs == null ? null : new Date(outMs).toISOString();
         // Break 1 / Lunch / Break 2 … with their own start and end times (instead of a minutes total).
         let brks = null;
@@ -589,6 +595,7 @@ export default async function handler(req, res) {
             if (brks) await sql`update shifts set breaks = ${JSON.stringify(brks)}::jsonb where id = ${b.id}`;
             await sql`update shifts set clock_in = ${inTs}, clock_out = ${outTs}, day = (${inTs}::timestamptz at time zone ${PAY_TZ})::date,
               break_min = ${brks ? null : brk}, note = ${note}, edited = true, updated_at = now(), count_from = null,
+              kind = case when ${kindSet} then ${kind} else kind end,
               breaks = (select coalesce(jsonb_agg(case when (x->>'e') is null and ${outTs}::timestamptz is not null
                 then x || jsonb_build_object('e', ${outMs}::float8) else x end), '[]'::jsonb) from jsonb_array_elements(breaks) x),
               approval = case when ${outTs}::timestamptz is not null then 'approved' else approval end, approved_by = ${me.id}, approved_at = now()
@@ -597,7 +604,7 @@ export default async function handler(req, res) {
             if (!b.memberId) return fail(res, 400, "Pick a team member.");
             await sql`insert into shifts (member_id, day, clock_in, clock_out, break_min, breaks, note, edited, kind, approval, approved_by, approved_at)
               values (${b.memberId}, (${inTs}::timestamptz at time zone ${PAY_TZ})::date, ${inTs}, ${outTs}, ${brks ? null : brk}, ${JSON.stringify(brks || [])}::jsonb, ${note}, true,
-                ${["5H", "6H"].includes(b.kind) ? b.kind : null}, ${outTs ? "approved" : "pending"}, ${me.id}, now())`;
+                ${kind}, ${outTs ? "approved" : "pending"}, ${me.id}, now())`;
           }
         } catch (e) { if (e.code === "23505") return fail(res, 409, "This person already has an open shift."); throw e; }
         return send(res, 200, { ok: true });
@@ -890,6 +897,11 @@ export default async function handler(req, res) {
         const v = { ...(row?.value || {}) }; if (dept) v[name] = dept; else v[name] = "";
         await sql`insert into settings (key, value) values ('metrics_teams', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
         return send(res, 200, { ok: true });
+      }
+      case "idleSignout": {
+        const v = [0, 15, 30, 60, 240].includes(+b.minutes) ? +b.minutes : 0;
+        await sql`insert into settings (key, value) values ('idle_signout', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+        return send(res, 200, { ok: true, minutes: v });
       }
       case "demoSetting": {
         // Team settings › show "Explore the demo" on the sign-in page (off by default)

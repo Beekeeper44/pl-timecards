@@ -324,6 +324,7 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .sbtn.sadm{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
 .sbtn.sadm.sel{color:var(--blue)!important;background:var(--blueSoft)!important;border-color:color-mix(in srgb,var(--blue) 55%,var(--line2))!important}
 .sbtn.sadm svg{width:14px;height:14px} .hcode.admc{color:var(--blue)} .hcode.admc svg{width:16px;height:16px;color:var(--blue)} .hcode.admc b{color:var(--blue)} .sbtn.sadm small{display:none}
+.prtable tr.prnone td{opacity:.55} .prtable tr.prnone td.tot{color:var(--muted)}
 .tcscope{margin:0 0 12px}
 .tcscope .pill-count{margin-left:6px}
 .ttpanel .weekhead{padding:16px 18px 6px;align-items:flex-start;gap:16px}
@@ -2042,6 +2043,7 @@ dialog::backdrop{background:var(--scrim)}
         <div id="adminSettings">
           <div class="panel note-panel"><div class="wtitle">Time clock</div><div class="note">Clock-in and clock-out times for the normal shift, habits and night shift are in <a href="#clocksetup">Time Clock Setup</a> in the left panel.</div></div>
           <div class="panel" id="importPanel"></div>
+          <div class="panel" id="idlePanel"></div>
           <div class="panel" id="demoPanel"></div>
           <div class="panel" id="invitePanel"></div>
           <div class="panel">
@@ -2085,6 +2087,7 @@ dialog::backdrop{background:var(--scrim)}
       <button type="button" class="btn sm ghost" data-clear>Clear</button>
     </div></div>
     <datalist id="dtpHours"></datalist><datalist id="dtpMins"></datalist>
+    <label>Shift type<select class="field" id="dlgKind"><option value="">Normal shift</option><option value="5H">5 AM Habit</option><option value="6H">6 PM Habit</option><option value="NS">Night shift</option></select></label>
     <div class="brkedit"><div class="brkhead"><b>Breaks &amp; lunch</b><span class="dim">Type times like 3:50 PM. Same day as clock in.</span></div>
       <div id="dlgBrks"></div>
       <div class="brkadd"><button type="button" class="btn sm" data-addbrk="break">＋ Break</button><button type="button" class="btn sm" data-addbrk="lunch">＋ Lunch</button></div>
@@ -2528,7 +2531,7 @@ dialog::backdrop{background:var(--scrim)}
   const busy = new Set(), expanded = new Set();
   const isAdmin = () => me?.role === "admin";
   const now = () => Date.now() + skew;
-  const IDLE_MS = 10 * 60000; let lastActive = Date.now();
+  let idleMin = 0, lastActive = Date.now();   // Team settings › Sign out when idle (off by default)
 
   // ---------- time helpers ----------
   const partsIn = (ms, zone) => {
@@ -2744,7 +2747,7 @@ dialog::backdrop{background:var(--scrim)}
         meetings: (D.meetings || []).filter(x => admin || x.managerId === D.meId || x.memberId === D.meId).map(x => ({ ...JSON.parse(JSON.stringify(x)), privateNotes: admin || x.managerId === D.meId ? x.privateNotes : null })),
         cycles: (D.cycles || []).map(x => ({ ...x })),
         deleted: admin ? (D.deleted || []).map(x => ({ ...x })) : [],
-        demoOnLogin: !!D.demoOnLogin, reviewQuestions: D.reviewQuestions || null, metricsTeams: { ...(D.metricsTeams || {}) },
+        demoOnLogin: !!D.demoOnLogin, idleSignout: D.idleSignout || 0, reviewQuestions: D.reviewQuestions || null, metricsTeams: { ...(D.metricsTeams || {}) },
         announcements: (D.announcements = (D.announcements || []).filter(x => x.at > Date.now() - 7 * 86400000)).map(x => ({ ...x })),
         reviews: (D.reviews || []).filter(r => admin || r.memberId === D.meId || r.reviewerId === D.meId).map(r => { const full = admin || r.reviewerId === D.meId || r.status === "shared"; return { ...r, rating: full ? r.rating : null, strengths: full ? r.strengths : null, growth: full ? r.growth : null, goals: full ? r.goals : null }; }),
         updates: (D.pupdates || []).filter(u => admin || u.authorId === D.meId || (u.memberId === D.meId && u.shared) || D.members.find(x => x.id === u.memberId)?.managerId === D.meId).sort((a, b) => b.at - a.at).map(u => ({ ...u })),
@@ -2760,7 +2763,9 @@ dialog::backdrop{background:var(--scrim)}
         const ua = navigator.userAgent, dev = /iPad/i.test(ua) || b.touchMac ? "iPad" : /iPhone|iPod/i.test(ua) ? "iPhone" : /Android/i.test(ua) ? (/Mobile/i.test(ua) ? "Android phone" : "Android tablet") : IS_PHONE ? "Phone" : "Computer";
         if (!admin && b.memberId !== D.meId) derr(403, "You can only clock yourself in and out.");
         const s = findOpen(b.memberId);
-        if (b.kind === "in") { if (s) derr(409, "Already clocked in."); const who = D.members.find(x => x.id === b.memberId); const chk = (D.shift.flexDepts || []).includes(who?.dept) || ((D.shift.flexDepts || []).includes("Admins") && who?.role === "admin" && !who?.anytimeOff) ? { ok: true } : inCheck(D.shift, t, D.sched[b.memberId] || []); if (!chk.ok && !admin) derr(403, `Clock in opens ${fmtWhen(chk.next, PAY_TZ)} Manila time.`); D.shifts.push({ id: did(), memberId: b.memberId, day: tday, in: t, out: null, open: true, breaks: [], breakMin: null, note: "", edited: false, late: !!chk.late, lateBy: chk.lateBy || null, countFrom: chk.countFrom || null, kind: chk.habit || null, deviceIn: dev }); }
+        if (b.kind === "in") { if (s) derr(409, "Already clocked in."); const who = D.members.find(x => x.id === b.memberId); const flexIn = (D.shift.flexDepts || []).includes(who?.dept) || ((D.shift.flexDepts || []).includes("Admins") && who?.role === "admin" && !who?.anytimeOff);
+          const hab = flexIn ? inCheck({ ...D.shift, enabled: true }, t, ["5H", "6H", "NS"].filter(c => D.shift.habits?.[c]?.time && D.shift.habits?.[c]?.enabled !== false)) : null;
+          const chk = flexIn ? { ok: true, habit: hab?.ok && hab.habit ? hab.habit : null } : inCheck(D.shift, t, D.sched[b.memberId] || []); if (!chk.ok && !admin) derr(403, `Clock in opens ${fmtWhen(chk.next, PAY_TZ)} Manila time.`); D.shifts.push({ id: did(), memberId: b.memberId, day: tday, in: t, out: null, open: true, breaks: [], breakMin: null, note: "", edited: false, late: !!chk.late, lateBy: chk.lateBy || null, countFrom: chk.countFrom || null, kind: chk.habit || null, deviceIn: dev }); }
         else if (!s) derr(409, "Not clocked in.");
         else if (b.kind === "break" || b.kind === "lunch") { if (s.breaks.some(x => x.e == null)) derr(409, "Already on a break."); s.breaks.push({ s: t, e: null, t: b.kind, ds: dev }); }
         else if (b.kind === "back") s.breaks.forEach(x => { if (x.e == null) { x.e = t; x.de = dev; } });
@@ -2832,7 +2837,7 @@ dialog::backdrop{background:var(--scrim)}
       case "toSchedule": { if (b.memberId !== D.meId) D.notifs.push({ id: did(), memberId: b.memberId, kind: "scheduled", title: `${meM.name} scheduled ${b.type} for you: ${fmtRange({ start: b.start, end: b.end })}`, body: b.note || "", link: "#mytime-requests", refId: null, read: false, at: Date.now() }); D.timeOff.push({ id: did(), memberId: b.memberId, type: b.type, start: b.start, end: b.end, note: b.note || "", status: "approved", decisionNote: "", created: Date.now(), decidedAt: Date.now(), decidedBy: D.meId }); return { ok: true }; }
       case "shiftSave": {
         if (b.out != null && b.out <= b.in) derr(400, "Clock out has to be after clock in and within 24 hours.");
-        const data = { in: b.in, out: b.out, open: b.out == null, day: dayKey(b.in), breakMin: Array.isArray(b.breaks) ? null : b.breakMin, note: b.note, edited: true, approval: b.out != null ? "approved" : "pending", countFrom: null };
+        const data = { kind: b.kind || null, in: b.in, out: b.out, open: b.out == null, day: dayKey(b.in), breakMin: Array.isArray(b.breaks) ? null : b.breakMin, note: b.note, edited: true, approval: b.out != null ? "approved" : "pending", countFrom: null };
         if (Array.isArray(b.breaks)) { const lim = b.out ?? b.in + 86400000; for (const x of b.breaks) { if (x.s < b.in || x.s > lim || (x.e != null && (x.e <= x.s || x.e > lim))) derr(400, "Breaks have to be during the shift."); } data.breaks = b.breaks.map(x => ({ ...x })); }
         if (b.id) Object.assign(D.shifts.find(s => s.id === b.id), data);
         else { if (b.out == null && findOpen(b.memberId)) derr(409, "This person already has an open shift."); D.shifts.push({ id: did(), memberId: b.memberId, breaks: [], ...data }); }
@@ -2868,6 +2873,7 @@ dialog::backdrop{background:var(--scrim)}
       case "adminAnyTime": { const m0 = D.members.find(x => x.id === b.memberId); if (!m0 || m0.role !== "admin") derr(400, "Only admins have this switch."); m0.anytimeOff = !b.on; return { ok: true }; }
       case "reviewQuestions": D.reviewQuestions = b.reset ? null : { self: b.self, mgr: b.mgr, extra: b.extra }; return { ok: true };
       case "metricsTeam": D.metricsTeams = { ...(D.metricsTeams || {}), [String(b.name).trim().toLowerCase()]: b.dept || "" }; return { ok: true };
+      case "idleSignout": D.idleSignout = +b.minutes || 0; return { ok: true };
       case "demoSetting": D.demoOnLogin = !!b.on; return { ok: true, on: !!b.on };
       case "memberDelete": { const m0 = D.members.find(x => x.id === b.id); if (!m0) derr(404, "That person is already gone."); if (b.id === D.meId) derr(400, "You can’t delete your own account.");
         if ((b.confirmName || "").trim().toLowerCase() !== m0.name.trim().toLowerCase()) derr(400, "Type their full name to confirm.");
@@ -2940,7 +2946,7 @@ dialog::backdrop{background:var(--scrim)}
   let lastLoadAt = 0, lastRev = null;
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
-    applyReviewQuestions(d.reviewQuestions); deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxSaved = { ...(d.metricsTeams || {}) }; mxTeams = { ...MX_TEAM_DEFAULTS, ...mxSaved }; me = d.me; members = d.members;
+    applyReviewQuestions(d.reviewQuestions); idleMin = +d.idleSignout || 0; deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxSaved = { ...(d.metricsTeams || {}) }; mxTeams = { ...MX_TEAM_DEFAULTS, ...mxSaved }; me = d.me; members = d.members;
     if (!DEMO && me && me.role === "admin" && members.length < 5 && !autoImportTried) { autoImportTried = true; setTimeout(autoImportTeam, 0); } live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
@@ -5463,6 +5469,11 @@ dialog::backdrop{background:var(--scrim)}
     const memberOf = r => r.memberId ? memberById(r.memberId) : null;
     d.rows.forEach(r => { if (r.team === "Oregon") mbTeamOf.set(String(r.name || "").trim().toLowerCase(), "Oregon"); });
      let rows = d.rows.filter(r => !/^\s*(team\s+)?total\s*$/i.test(String(r.name || ""))).filter(r => (!r.memberId || memberById(r.memberId)) && !(!r.memberId && isDeletedName(r.name))).filter(r => (pr.dept === "All" || (memberOf(r)?.dept || mxTeamOf(r.name)) === pr.dept) && (!pr.q || (r.name + " " + (memberOf(r)?.name || "")).toLowerCase().includes(pr.q.toLowerCase())));
+    // A single team: also list its people with no cards in this period, so nobody looks missing.
+    if (pr.dept !== "All" && pr.dept !== "Oregon" && !pr.q) {
+      const have = new Set(rows.map(r => r.memberId).filter(Boolean));
+      activeMembers().filter(m => m.dept === pr.dept && !have.has(m.id)).forEach(m => rows.push({ memberId: m.id, name: m.name, values: {}, total: 0, days: 0, none: true }));
+    }
     const { k, dir } = pr.sort;
     rows.sort((a, b) => (k === "name" ? (memberOf(a)?.name || a.name).localeCompare(memberOf(b)?.name || b.name) : k === "total" ? a.total - b.total : k === "avg" ? a.total / (a.days || 1) - b.total / (b.days || 1) : (a.values[k] || 0) - (b.values[k] || 0)) * dir || (memberOf(a)?.name || a.name).localeCompare(memberOf(b)?.name || b.name));
     d.rows.forEach(r => withRejects(r.values));
@@ -5523,7 +5534,7 @@ dialog::backdrop{background:var(--scrim)}
         <div class="tclegend">${["Data", "Review", "Grading", "Recomp"].map(t => `<span style="--tc:${deptColor(t)}"><i></i>${t}${t === "Recomp" ? " (EV)" : ""}</span>`).join("")}<span class="dim">Items does Data and Recomp tasks</span></div>
         ${rng === "day" && sxs.on ? sxsHtml(from) : ""}
         <div class="tablewrap flat prwrap"><table class="ttable prtable ${rng !== "day" ? "multi" : ""}"><thead><tr>${th("name", "Team member", "nm")}${cols.map(c => th(c, esc(colLabel(c)), /REJECT/.test(c) ? "num rej" : "num")).join("")}${th("total", "Total", "num tot")}${rng !== "day" ? th("avg", "Avg / day", "num avg") : ""}</tr></thead><tbody>
-          ${rows.map(r => { const m = memberOf(r); return `<tr class="prsel ${pr.sel === rowKey(r) ? "on" : ""}" data-prsel="${esc(rowKey(r))}" title="Show ${esc(m?.name || r.name)}’s numbers above"><td class="nm">${m ? `<a class="c-name2" href="#profile-${m.id}">${avatar(m)}<span><b>${esc(m.name)}</b><small>${esc(m.dept)}</small></span></a>` : (() => { const tm = mxTeamOf(r.name); return `<span class="c-name2">${tm ? `<span class="av ini" style="background:color-mix(in srgb, ${deptColor(tm)} 18%, transparent);box-shadow:inset 0 0 0 1.5px ${deptColor(tm)};color:var(--text)">${esc(initials(r.name))}</span>` : ""}<span><b>${esc(r.name)}</b><small class="${tm ? "" : "dim"}">${tm ? `${esc(tm)} <span class="dim">· from Metabase</span>` : "not on the team list"}${isAdmin() ? ` · <select class="mxteam" data-mxteam="${esc(r.name)}" title="Which team ${esc(r.name)}’s numbers count under">${["", "Oregon", ...DEPTS.map(([dd]) => dd)].map(dd => `<option value="${esc(dd)}" ${dd === tm ? "selected" : ""}>${dd || "Set team…"}</option>`).join("")}</select>${tm ? "" : ` <button class="linkbtn" data-mxadd="${esc(r.name)}">＋ Add as app user</button>`}` : ""}</small></span></span>`; })()}</td>
+          ${rows.map(r => { const m = memberOf(r); return `<tr class="prsel ${pr.sel === rowKey(r) ? "on" : ""} ${r.none ? "prnone" : ""}" data-prsel="${esc(rowKey(r))}" title="Show ${esc(m?.name || r.name)}’s numbers above"><td class="nm">${m ? `<a class="c-name2" href="#profile-${m.id}">${avatar(m)}<span><b>${esc(m.name)}</b><small>${esc(m.dept)}${r.none ? ` · <span class="dim">no cards ${rng === "day" ? "this day" : "in this period"}</span>` : ""}</small></span></a>` : (() => { const tm = mxTeamOf(r.name); return `<span class="c-name2">${tm ? `<span class="av ini" style="background:color-mix(in srgb, ${deptColor(tm)} 18%, transparent);box-shadow:inset 0 0 0 1.5px ${deptColor(tm)};color:var(--text)">${esc(initials(r.name))}</span>` : ""}<span><b>${esc(r.name)}</b><small class="${tm ? "" : "dim"}">${tm ? `${esc(tm)} <span class="dim">· from Metabase</span>` : "not on the team list"}${isAdmin() ? ` · <select class="mxteam" data-mxteam="${esc(r.name)}" title="Which team ${esc(r.name)}’s numbers count under">${["", "Oregon", ...DEPTS.map(([dd]) => dd)].map(dd => `<option value="${esc(dd)}" ${dd === tm ? "selected" : ""}>${dd || "Set team…"}</option>`).join("")}</select>${tm ? "" : ` <button class="linkbtn" data-mxadd="${esc(r.name)}">＋ Add as app user</button>`}` : ""}</small></span></span>`; })()}</td>
             ${cols.map(c => `<td class="num ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""} ${r.values[c] ? "" : "z"}"${colStyle(c)}>${r.values[c] ? r.values[c].toLocaleString() : ""}</td>`).join("")}<td class="num tot">${r.total.toLocaleString()}</td>${rng !== "day" ? `<td class="num avg">${Math.round(r.total / (r.days || 1)).toLocaleString()}<small>${r.days || 1}d</small></td>` : ""}</tr>`; }).join("") || `<tr><td colspan="${cols.length + (rng !== "day" ? 3 : 2)}" class="rqempty">${isCur ? `No cards ${dayLabel} yet. Metabase updates every hour.` : `No cards for ${esc(periodName(rng, from))}.`}</td></tr>`}
           </tbody>${rows.length ? `<tfoot><tr><td class="nm"><b>Total</b></td>${cols.map(c => `<td class="num ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""}"${colStyle(c)}><b>${sum(c).toLocaleString()}</b></td>`).join("")}<td class="num tot"><b>${total.toLocaleString()}</b></td>${rng !== "day" ? `<td class="num avg"><b>${(() => { const pd = rows.reduce((a, r) => a + (r.total ? (r.days || 1) : 0), 0); return pd ? Math.round(total / pd).toLocaleString() : "—"; })()}</b><small>per person</small></td>` : ""}</tr></tfoot>` : ""}</table></div></div>`;
   }
@@ -5924,6 +5935,7 @@ dialog::backdrop{background:var(--scrim)}
     $("dlgIn").value = msToLocalInput(base, tz);
     $("dlgOut").value = shift ? (shift.out ? msToLocalInput(shift.out, tz) : "") : msToLocalInput(base + 9 * 3600000, tz);
     dtpShow("dlgIn"); dtpShow("dlgOut");
+    $("dlgKind").value = shift && shift.kind ? shift.kind : "";
     // Breaks & lunch with their own times: Break 1, Lunch, Break 2 …
     brkDraft = shift && (shift.breaks || []).length ? shift.breaks.slice().sort((a, b) => a.s - b.s).map(x => ({ ...x, t: isLunch(x) ? "lunch" : "break" }))
       : shift ? [] : [{ t: "break" }, { t: "lunch" }, { t: "break" }];
@@ -5943,6 +5955,7 @@ dialog::backdrop{background:var(--scrim)}
       in: zonedToMs($("dlgIn").value, tz), out: $("dlgOut").value ? zonedToMs($("dlgOut").value, tz) : null,
       breakMin: Math.max(0, parseInt($("dlgBrk").value || "0", 10) || 0), note: $("dlgNote").value.trim()
     };
+    payload.kind = $("dlgKind").value || null;
     const inMs0 = payload.in, br = readBrks(inMs0);
     if (br.error) { toast(br.error); setTimeout(() => $("dlg").showModal(), 0); return; }
     if (br.list.length || (editing && (editing.breaks || []).length)) payload.breaks = br.list;
@@ -6768,8 +6781,16 @@ ${others.map(m => m.name).join(", ")} will report to ${L.name.split(" ")[0]}.`, 
       renderSettings();
     };
   }
+  function renderIdlePanel() {
+    if (!$("idlePanel")) return;
+    $("idlePanel").innerHTML = `<div class="weekhead"><div><div class="wtitle">Sign out when idle</div><div class="note">For shared computers: sign team members out after no activity. Off keeps everyone signed in (sign-ins last 14 days and renew while the app is used). Admins are never signed out this way.</div></div>
+      <div class="seg">${[[0, "Off"], [15, "15 min"], [30, "30 min"], [60, "1 hour"], [240, "4 hours"]].map(([v, l]) => `<button data-idle="${v}" aria-pressed="${idleMin === v}">${l}</button>`).join("")}</div></div>`;
+    $("idlePanel").querySelectorAll("[data-idle]").forEach(b => b.onclick = () => { const v = +b.dataset.idle; idleMin = v; renderIdlePanel();
+      run(() => dataCall({ op: "idleSignout", minutes: v }), v ? `Team members are signed out after ${b.textContent} idle` : "Idle sign-out is off"); });
+  }
   function renderDemoPanel() {
     if (!$("demoPanel")) return;
+    renderIdlePanel();
     $("demoPanel").innerHTML = `<div class="weekhead"><div><div class="wtitle">Demo mode</div><div class="note">Off: the sign-in page only has your work email sign-in, and links ending in ?demo don’t open the demo. On: anyone at the sign-in page can click “Explore the demo” (sample data in their own browser; nothing is saved or sent).</div></div>
       <label class="switch"><input type="checkbox" id="demoOnLogin" ${demoOnLogin ? "checked" : ""}><span></span>${demoOnLogin ? "On" : "Off"}</label></div>`;
     $("demoOnLogin").onchange = e => { const on = e.target.checked; run(() => dataCall({ op: "demoSetting", on }), on ? "Demo is on for the sign-in page" : "Demo is off"); };
@@ -7173,7 +7194,7 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   const h = location.hash.slice(1); if (VIEWS.includes(h)) view = h; else if (h.startsWith("mytime-")) view = "mytime"; else if (h.startsWith("profile-")) view = "profile";
   VIEWS.forEach(x => $("view-" + x).hidden = x !== view);
   setInterval(() => {
-    if (me && !isAdmin() && Date.now() - lastActive > IDLE_MS) { signOut("Signed out after 10 minutes of no activity"); return; }
+    if (me && !isAdmin() && idleMin > 0 && Date.now() - lastActive > idleMin * 60000) { signOut(`Signed out after ${idleMin} minutes of no activity`); return; }
     if (me && !document.hidden && Date.now() - lastLoadAt > 60000) load();
   }, 20000);
   setInterval(pingRev, 2000);   // live updates: changes from any computer show within ~2 seconds

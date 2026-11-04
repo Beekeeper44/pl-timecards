@@ -114,7 +114,7 @@ Light and dark themes. Defaults to the device setting; anyone can switch System 
 - **Change password:** Account settings › Change password (needs the current one).
 - **Admins:** Team settings › Team members › **Reset password** clears someone’s password; next time they sign in they verify with a code and create a new one.
 - 5 wrong passwords locks the account for 5 minutes. Codes expire after 10 minutes, 5 wrong tries per code, 5 codes per hour per person.
-- Sessions last 12 hours; team members are signed out after 10 minutes idle.
+- Sign-ins last 14 days and renew themselves while the app is used. Idle sign-out is **off** by default; admins can turn it on for shared computers in **Team settings › Sign out when idle** (15 min – 4 hours, team members only).
 - Phone numbers on file were cleared once in Oct 2026 (a one-time migration on the first deploy after the change); people add their own at sign-up, and admins can still edit them in Team settings.
 - Anyone who set a 4–6 digit PIN under the older version can still sign in with it as their password, and should change it in Account settings.
 
@@ -229,3 +229,9 @@ Metabase’s `WORK_DATE` is a Pacific date. With the top bar on **🇺🇸 Pacif
 
 
 Schedule row: an admin who can clock in any time (Time Clock Setup › Clock in any time › **Admins**) sees a **🛡 Admin** chip instead of **CS** that switches their own “clock in any time” on (blue, ✓) or off (normal shift times, Late / Left early apply; saved per admin in `members.anytime_off`) on their My Time card and profile (both the badge under their name and the Schedule row), and Schedule overview / Live day don’t show CS for them either. Others still see CS.
+
+
+Metrics: when a single team pill is picked, the table also lists that team’s people with no cards in the period (faded, “no cards this day”), so nobody looks missing. The pill counts still count people with cards.
+
+
+**Habit sessions for any-time people:** admins and the CS team can clock in any time, but a session that starts in a habit window (5 AM Habit, 6 PM Habit, Night shift) is still recorded as that habit instead of a Normal shift (no Late / Left early). **Edit shift › Shift type** fixes any session (Normal shift, 5 AM Habit, 6 PM Habit, Night shift).

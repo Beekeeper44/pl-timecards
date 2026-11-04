@@ -258,6 +258,18 @@ let [aon] = await q("select anytime_off from members where id=$1", [alan.id]); o
 r = await K.op({ op: "adminAnyTime", memberId: alan.id, on: true }); ok(r.status === 403, "team members can't change it");
 r = await A.op({ op: "adminAnyTime", memberId: alan.id, on: true }); [aon] = await q("select anytime_off from members where id=$1", [alan.id]); ok(aon.anytime_off === false, "and back on");
 
+step("8f. Shift type can be fixed");
+{ const [x] = await q("select id, clock_in, clock_out from shifts where member_id=$1 and clock_out is not null order by clock_in desc limit 1", [khimRow.id]);
+  r = await A.op({ op: "shiftSave", id: x.id, memberId: khimRow.id, in: new Date(x.clock_in).getTime(), out: new Date(x.clock_out).getTime(), kind: "5H", note: "Fixed missed punch" });
+  let [y] = await q("select kind from shifts where id=$1", [x.id]); ok(r.status === 200 && y.kind === "5H", "Edit shift changes a Normal shift to 5 AM Habit");
+  await A.op({ op: "shiftSave", id: x.id, memberId: khimRow.id, in: new Date(x.clock_in).getTime(), out: new Date(x.clock_out).getTime(), kind: "", note: "Fixed missed punch" });
+  await A.op({ op: "shiftApprove", ids: [x.id], status: "approved" });
+  [y] = await q("select kind from shifts where id=$1", [x.id]); ok(y.kind === null, "and back to Normal shift"); }
+
+step("8e. Staying signed in");
+r = await A.op({ op: "idleSignout", minutes: 30 }); ok(r.status === 200 && (await A.get({ week: "" })).body.idleSignout === 30, "idle sign-out setting saved");
+await A.op({ op: "idleSignout", minutes: 0 }); ok((await A.get({ week: "" })).body.idleSignout === 0, "idle sign-out off by default / can be turned off");
+
 // 9. Announcements with an image
 step("9. Announcement with an image");
 r = await A.op({ op: "annPost", body: "Holiday party Friday!", image: png });

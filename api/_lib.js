@@ -248,7 +248,13 @@ export function setCookie(res, name, value, maxAgeSec) {
 }
 export const clearCookie = (res, name) => setCookie(res, name, "", 0);
 
-export const SESSION_HOURS = 12, TRUST_DAYS = 30;
+// Sign-ins last 14 days and renew themselves while the app is in use, so nobody is signed out mid-shift.
+export const SESSION_HOURS = 14 * 24, TRUST_DAYS = 30;
+export function renewSession(req, res, m) {
+  const s = unsign(cookies(req).pltc_s);
+  if (s && m && s.exp - Date.now() < (SESSION_HOURS - 24) * 3600e3)   // older than a day: push it out again
+    setCookie(res, "pltc_s", sign({ uid: m.id, exp: Date.now() + SESSION_HOURS * 3600e3 }), SESSION_HOURS * 3600);
+}
 export async function currentUser(req) {
   const s = unsign(cookies(req).pltc_s);
   if (!s) return null;
