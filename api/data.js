@@ -468,6 +468,19 @@ export default async function handler(req, res) {
       }
       return send(res, 200, { ok: true, sent });
     }
+    if (b.op === "reviewUnsend") {
+      // Take back a send: the self review (closes it again, answers so far are kept) or the manager review (back to a draft they can't see).
+      const [x] = await sql`select r.member_id, r.reviewer_id, r.self_submitted_at, c.name, c.status from reviews r join review_cycles c on c.id = r.cycle_id where r.id = ${b.id}`;
+      if (!x) return fail(res, 404, "That review is gone.");
+      if (!admin && x.reviewer_id !== me.id) return fail(res, 403, "Only their reviewer or an admin can do that.");
+      if (b.part === "self") {
+        if (x.self_submitted_at) return fail(res, 400, "They already submitted it. Use Unlock to let them change it.");
+        await sql`update reviews set self_sent_at = null, updated_at = now() where id = ${b.id}`;
+      } else {
+        await sql`update reviews set status = 'draft', shared_at = null, updated_at = now() where id = ${b.id} and status = 'shared'`;
+      }
+      return send(res, 200, { ok: true });
+    }
     if (b.op === "reviewUnlockSelf") {
       // Let a team member change a submitted self review.
       const [x] = await sql`select r.member_id, r.reviewer_id, c.name, c.status from reviews r join review_cycles c on c.id = r.cycle_id where r.id = ${b.id}`;

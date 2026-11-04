@@ -245,3 +245,6 @@ Metrics › **Team · Overtime · Personal** pills (admins): **Overtime** opens 
 
 
 **Name matching (Metabase → team):** exact names, then aliases, then the email name (“Ian f” = ianf@…), then partial names; a single letter must be an initial of one of their names (“Ian B” → Ian Benedict Banua); if two people match equally well the row isn’t guessed (it shows as not on the team list).
+
+
+**Unsend:** in a review cycle, a sent self review has **Unsend** under “Sent …” (closes it for them until you send it again; anything they typed is kept; once they’ve submitted, use **Unlock** instead), and a sent manager review has **Unsend** under “Sent” (back to a draft they can’t see). Reviewer or admin only.

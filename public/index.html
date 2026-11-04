@@ -327,6 +327,7 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .prtable tr.prnone td{opacity:.55} .prtable tr.prnone td.tot{color:var(--muted)}
 .otslots{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0} .otslots .hl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .otslots .fpill small{margin-left:6px;color:var(--muted);font-weight:500}
+.rvundo{display:block;font-size:12px;margin:3px 0 0;color:var(--red)!important;position:relative;z-index:1}
 .tcscope{margin:0 0 12px}
 .tcscope .pill-count{margin-left:6px}
 .ttpanel .weekhead{padding:16px 18px 6px;align-items:flex-start;gap:16px}
@@ -2873,6 +2874,9 @@ dialog::backdrop{background:var(--scrim)}
       case "resetPin": D.members.find(x => x.id === b.id).hasPin = false; return { ok: true };
       case "inviteLinks": return { ok: true, links: (b.ids || []).map(id => D.members.find(x => x.id === id)).filter(Boolean).map(m => { if (!m.hasPin && !m.invitedAt) m.invitedAt = Date.now(); return { id: m.id, name: m.name, email: m.email, signedUp: !!m.hasPin, link: `https://pl-time-cards.vercel.app/?join=demo-${m.id.slice(0, 8)}` }; }) };
       case "adminAnyTime": { const m0 = D.members.find(x => x.id === b.memberId); if (!m0 || m0.role !== "admin") derr(400, "Only admins have this switch."); m0.anytimeOff = !b.on; return { ok: true }; }
+      case "reviewUnsend": { const r0 = (D.reviews || []).find(x => x.id === b.id); if (!r0) derr(404, "That review is gone.");
+        if (b.part === "self") { if (r0.selfSubmittedAt) derr(400, "They already submitted it. Use Unlock to let them change it."); r0.selfSentAt = null; }
+        else if (r0.status === "shared") { r0.status = "draft"; r0.sharedAt = null; } return { ok: true }; }
       case "reviewQuestions": D.reviewQuestions = b.reset ? null : { self: b.self, mgr: b.mgr, extra: b.extra }; return { ok: true };
       case "metricsTeam": D.metricsTeams = { ...(D.metricsTeams || {}), [String(b.name).trim().toLowerCase()]: b.dept || "" }; return { ok: true };
       case "idleSignout": D.idleSignout = +b.minutes || 0; return { ok: true };
@@ -4438,8 +4442,8 @@ dialog::backdrop{background:var(--scrim)}
           <div class="tablewrap flat" style="border:1px solid var(--line);border-radius:10px"><table class="ttable rvtable"><thead><tr><th>Team member</th><th>Reviewer</th><th>${esc(selfName(cyc.name))}</th><th>${esc(cyc.name)}</th><th>Rating</th><th></th></tr></thead><tbody>
           ${rows.map(({ r, m }) => { const [k, l] = reviewStatus(r); return `<tr class="rvrow" data-rv="${r.id}"><td><span class="who"><b>${esc(m.name)}</b><small style="color:${deptColor(m.dept)}">${esc(m.dept)}</small></span></td>
             <td>${esc(nm(r.reviewerId))}</td>
-            <td>${selfDone(r) ? `<button class="chip2 done link" data-viewself="${r.id}" title="Read ${esc(m.name.split(" ")[0])}’s ${esc(selfName(cyc.name))}">Submitted · Read</button>` : r.selfSentAt ? `<span class="chip2 a">Sent ${fmtIn(r.selfSentAt, tz, { month: "short", day: "numeric" })}</span>` : '<span class="dim">Not sent</span>'}</td>
-            <td><span class="chip2 ${k}">${r.status === "shared" ? "Sent" : l}</span></td><td class="rt">${(() => { const a = mgrAvg(r); return a ? `★ ${Number.isInteger(a) ? a : a.toFixed(1)}<small>${RATINGS[Math.round(a)]}</small>` : '<span class="dim">—</span>'; })()}</td>
+            <td>${selfDone(r) ? `<button class="chip2 done link" data-viewself="${r.id}" title="Read ${esc(m.name.split(" ")[0])}’s ${esc(selfName(cyc.name))}">Submitted · Read</button>` : r.selfSentAt ? `<span class="chip2 a">Sent ${fmtIn(r.selfSentAt, tz, { month: "short", day: "numeric" })}</span>${cyc.status === "open" && (admin || r.reviewerId === me.id) ? ` <button class="linkbtn rvundo" data-unsend="self:${r.id}" title="Take the ${esc(selfName(cyc.name))} back (it closes for ${esc(m.name.split(" ")[0])} until you send it again)">Unsend</button>` : ""}` : '<span class="dim">Not sent</span>'}</td>
+            <td><span class="chip2 ${k}">${r.status === "shared" ? "Sent" : l}</span>${r.status === "shared" && cyc.status === "open" && (admin || r.reviewerId === me.id) ? ` <button class="linkbtn rvundo" data-unsend="mgr:${r.id}" title="Take the ${esc(cyc.name)} back to a draft ${esc(m.name.split(" ")[0])} can’t see">Unsend</button>` : ""}</td><td class="rt">${(() => { const a = mgrAvg(r); return a ? `★ ${Number.isInteger(a) ? a : a.toFixed(1)}<small>${RATINGS[Math.round(a)]}</small>` : '<span class="dim">—</span>'; })()}</td>
             <td class="acts">${cyc.status === "open" && selfDone(r) && (admin || r.reviewerId === me.id) ? `<button class="btn sm ghost" data-unlockself="${r.id}" title="Let ${esc(m.name.split(" ")[0])} change their ${esc(selfName(cyc.name))}">Unlock</button>` : ""}${cyc.status === "open" && !selfDone(r) ? `<button class="btn sm" data-sendself="${r.id}" title="Email and notify ${esc(m.name.split(" ")[0])} to write their ${esc(selfName(cyc.name))}">${r.selfSentAt ? "Resend" : "Send self review"}</button>` : ""}
               <button class="btn sm ${r.status === "not_started" || !r.status ? "primary" : ""}" data-rv="${r.id}">${r.reviewerId === me.id || admin ? (r.status === "shared" ? "Edit" : r.status === "draft" ? "Continue" : "Write") : "Open"}</button>
               ${(r.reviewerId === me.id || admin) && r.status === "draft" ? `<button class="btn sm primary" data-sendrv="${r.id}" title="Send ${esc(cyc.name)} to ${esc(m.name.split(" ")[0])}">Send review</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="6" class="rqempty">No reviews for you in this cycle.</td></tr>`}
@@ -4451,7 +4455,12 @@ dialog::backdrop{background:var(--scrim)}
     $("reviewsBody").innerHTML = html;
     const B = $("reviewsBody");
     B.querySelectorAll("[data-cyc]").forEach(b => b.onclick = () => { selCycle = b.dataset.cyc; renderReviews(); });
-    B.querySelectorAll("[data-rv]").forEach(b => b.onclick = e => { if (e.target.closest("[data-sendself],[data-sendrv],[data-viewself],[data-unlockself]")) return; e.stopPropagation(); openReview(b.dataset.rv); });
+    B.querySelectorAll("[data-unsend]").forEach(b => b.onclick = async e => { e.stopPropagation();
+      const [part, id] = b.dataset.unsend.split(":"), r0 = reviews.find(x => x.id === id), cy = cycles.find(c => c.id === r0?.cycleId) || {}, who = nm(r0?.memberId);
+      const what = part === "self" ? selfName(cy.name) : cy.name;
+      if (!await askConfirm(part === "self" ? `Unsend the ${what} for ${who}?\n\nIt closes for them until you send it again. Anything they’ve typed is kept.` : `Unsend the ${what} for ${who}?\n\nIt goes back to a draft they can’t see. Your votes and comments are kept.`, "Unsend")) return;
+      run(() => dataCall({ op: "reviewUnsend", id, part }), `${what} unsent`); });
+    B.querySelectorAll("[data-rv]").forEach(b => b.onclick = e => { if (e.target.closest("[data-sendself],[data-sendrv],[data-viewself],[data-unlockself],[data-unsend]")) return; e.stopPropagation(); openReview(b.dataset.rv); });
     B.querySelectorAll("[data-sendself]").forEach(b => b.onclick = async e => { e.stopPropagation();
       const ids = b.dataset.sendself.split(","), r0 = reviews.find(x => x.id === ids[0]), cy = cycles.find(c => c.id === r0?.cycleId) || {};
       const who = ids.length === 1 ? nm(r0.memberId) : `${ids.length} people`;

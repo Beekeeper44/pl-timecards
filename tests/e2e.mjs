@@ -311,7 +311,18 @@ step("9a. An admin being reviewed fills in the self review, not the manager part
       await A.op({ op: "resetPin", id: ka.id }); const tokR = await A.op({ op: "inviteLinks", ids: [ka.id] }); const tk = new URL(tokR.body.links[0].link).searchParams.get("join");
       await KC.auth({ action: "join", token: tk }); await KC.auth({ action: "createPin", pin: "Manager2026", phone: "+639171112222" });
       r = await KC.op({ op: "reviewSave", id: kr.id, answers: [{ q: "Statement", rating: 5 }] });
-      ok(r.status === 403, "Karl can't fill in his own manager review"); } } }
+      ok(r.status === 403, "Karl can't fill in his own manager review");
+      r = await A.op({ op: "reviewSendSelf", ids: [kr.id], questions: ["What were some of your biggest highlights in 2026?", "What are a few of your lowlights from 2026?"] });
+      const kn = (await KC.get({ week: "" })).body;
+      ok(r.status === 200 && r.body.sent === 1 && kn.reviews.find(x => x.id === kr.id)?.selfSentAt, "self review sent to Karl (an admin)");
+      ok((kn.notifications || []).some(n => /Self Review/i.test(n.title) && /biggest highlights/.test(n.body || "")), "Karl’s notification lists the questions");
+      r = await KC.op({ op: "reviewSave", id: kr.id, self: true, answers: [{ q: "What were some of your biggest highlights in 2026?", a: "Built the review team" }, { q: "What are a few of your lowlights from 2026?", a: "Hiring took long" }] });
+      ok(r.status === 200, "Karl submits his self review");
+      r = await A.op({ op: "reviewUnsend", id: kr.id, part: "self" }); ok(r.status === 400, "a submitted self review can’t be unsent (use Unlock)");
+      const [kr2] = await q("select r.id from reviews r join review_cycles c on c.id=r.cycle_id where c.name='Admin check' and r.member_id<>$1 limit 1", [ka.id]);
+      if (kr2) { await A.op({ op: "reviewSendSelf", ids: [kr2.id], questions: ["Q1"] });
+        r = await A.op({ op: "reviewUnsend", id: kr2.id, part: "self" }); const [u] = await q("select self_sent_at from reviews where id=$1", [kr2.id]);
+        ok(r.status === 200 && u.self_sent_at === null, "Unsend takes a sent self review back"); } } } }
 
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });
