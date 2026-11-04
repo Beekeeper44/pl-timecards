@@ -17,6 +17,8 @@ const MB_ROWS = [
   { WORK_DATE: "2026-11-02", FULL_NAME: "Ian f", REVIEW_CARDS: 0, CROP_CARDS: 21, TOTAL_CARDS: 278, TEAM: "PL" },
 ];
 const OT_ROWS = [
+  { FULL_NAME: "HOUR TOTAL", CROP_CARDS: 268, TOTAL_CARDS: 2180, TEAM: null, WORK_DATE: "2026-11-02", SHIFT_HOUR: 22 },
+  { FULL_NAME: "Ian f", CROP_CARDS: 59, TOTAL_CARDS: 82, TEAM: "PL", WORK_DATE: "2026-11-02", SHIFT_HOUR: 22 },
   { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", SHIFT_HOUR: "All hours", CROP_CARDS: 30, TOTAL_CARDS: 30 },
   { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", SHIFT_HOUR: "10 PM – 11 PM", CROP_CARDS: 20, TOTAL_CARDS: 20 },
   { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", SHIFT_HOUR: "11 PM – 12 AM", CROP_CARDS: 10, TOTAL_CARDS: 10 },
@@ -268,10 +270,11 @@ step("8c2. Overtime board (admins only)");
 let otr = await A.get({ production: "1", card: "overtime", tz: "pacific", range: "day", date: "2026-11-02" });
 ok(otr.status === 200 && otr.body.slots.join("|") === "10 PM – 11 PM|11 PM – 12 AM", `overtime hours in order from the end of the shift (${otr.body.slots})`);
 ok(otr.body.rows.find(r => /Bueno/.test(r.name))?.total === 30, "All hours uses Metabase’s All hours rows");
+ok(!otr.body.rows.some(r => /total/i.test(r.name)), "the HOUR TOTAL row is left out");
 otr = await A.get({ production: "1", card: "overtime", tz: "pacific", range: "day", date: "2026-11-02", slot: "2" });
 ok(otr.body.rows.length === 1 && otr.body.rows[0].total === 10, "2 hr shows only the 11 PM – 12 AM hour");
 otr = await A.get({ production: "1", card: "overtime", tz: "manila", range: "day", date: "2026-11-03", slot: "1" });
-ok(otr.body.rows.length === 2, "Manila Nov 3 shows the same overtime as Pacific Nov 2");
+ok(otr.body.rows.length === 3, "Manila Nov 3 shows the same overtime as Pacific Nov 2 (hour given as 22 works too)");
 otr = await K.get({ production: "1", card: "overtime" }); ok(otr.status === 403, "team members can’t see overtime");
 
 step("8d. Admin “any time” switch");

@@ -59,13 +59,15 @@ export default async function handler(req, res) {
       let data;
       const force = admin && req.query.refresh === "1";
       try { data = await metabaseCardRows(c.cardId, force); if (force) await bumpRev(); } catch (e) { return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, error: e.message }); }
-      const nameCol = c.nameCol || "FULL_NAME", dateCol = c.dateCol || "WORK_DATE", totalCol = c.totalCol || "TOTAL_CARDS";
+      // Column names: the saved ones, else the usual ones, else the first column whose name says what it is (…NAME, …DATE, …TOTAL…)
+      const pickCol = (want, re) => data.cols.includes(want) ? want : (data.cols.find(k => re.test(k)) || want);
+      const nameCol = c.nameCol || pickCol("FULL_NAME", /NAME/i), dateCol = c.dateCol || pickCol("WORK_DATE", /DATE|DAY/i), totalCol = c.totalCol || pickCol("TOTAL_CARDS", /^TOTAL/i);
       const rawDay = v => { if (!v) return ""; const s = String(v); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10); const t = Date.parse(s); return Number.isFinite(t) ? new Date(t + 12 * 3600e3).toISOString().slice(0, 10) : ""; };
       const plus1 = k => { const [y, mo, d] = k.split("-").map(Number); return new Date(Date.UTC(y, mo - 1, d + 1)).toISOString().slice(0, 10); };
       const toDay = v => { const k = rawDay(v); return k && manila ? plus1(k) : k; };   // the day this row belongs to in the chosen view
       const teamCol = c.teamCol || "TEAM";
       // Skip summary rows like "TEAM TOTAL"; Metabase's TEAM column says which team (Review = the Oregon team, PL = Manila)
-      const isTotalRow = r => /^\s*(team\s+)?total\s*$/i.test(String(r[nameCol] || ""));
+      const isTotalRow = r => /^\s*([a-z]+\s+)?totals?\s*$/i.test(String(r[nameCol] || "")) || /^\s*(grand\s+)?total\b/i.test(String(r[nameCol] || ""));   // TEAM TOTAL, HOUR TOTAL, Total…
       const mbTeam = r => String(r[teamCol] ?? "").trim();
       const oregonRow = r => /^review$/i.test(mbTeam(r));
       const days = [...new Set(data.rows.map(r => toDay(r[dateCol])).filter(Boolean))].sort();
@@ -76,8 +78,14 @@ export default async function handler(req, res) {
       // Overtime: SHIFT_HOUR is a Pacific clock hour ("10 PM – 11 PM"). Slots go in order from the end of the shift (1 hr, 2 hr…).
       let slots = [];
       if (ot) {
-        const hourCol = c.hourCol || "SHIFT_HOUR", isAll = v => /^\s*all/i.test(String(v || ""));
-        const startH = v => { const m = /(\d{1,2})(?::\d{2})?\s*([ap])/i.exec(String(v || "")); if (!m) return 99; return (+m[1] % 12) + (/p/i.test(m[2]) ? 12 : 0); };
+        const hourCol = c.hourCol || pickCol("SHIFT_HOUR", /HOUR/i), isAll = v => /^\s*all/i.test(String(v || ""));
+        // SHIFT_HOUR can come as "10 PM – 11 PM", a number (22), "22:00" or a timestamp; turn them all into "10 PM – 11 PM"
+        const ap = h => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
+        const hourOf = v => { if (v == null || v === "" || isAll(v)) return null; if (typeof v === "number") return v % 24; const t = String(v);
+          const m = /(\d{1,2})(?::\d{2})?\s*([ap])\.?m/i.exec(t); if (m) return (+m[1] % 12) + (/p/i.test(m[2]) ? 12 : 0);
+          const iso = /T(\d{2}):\d{2}/.exec(t) || /^(\d{1,2}):\d{2}/.exec(t) || /^(\d{1,2})$/.exec(t.trim()); return iso ? +iso[1] % 24 : null; };
+        data = { ...data, rows: data.rows.map(r => { const h = hourOf(r[hourCol]); return h == null ? r : { ...r, [hourCol]: `${ap(h)} – ${ap((h + 1) % 24)}` }; }) };
+        const startH = v => { const h = hourOf(v); return h == null ? 99 : h; };
         const shEnd = (await getShift()).end || "22:10", endH = +String(shEnd).split(":")[0];   // normal shift ends 10:10 PM PT → 1 hr = 10–11 PM
         const order = v => (startH(v) - endH + 24) % 24;
         slots = [...new Set(data.rows.map(r => r[hourCol]).filter(v => v && !isAll(v)))].sort((a, b) => order(a) - order(b));
