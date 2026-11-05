@@ -251,3 +251,9 @@ Metrics › **Team · Overtime · Personal** pills (admins): **Overtime** opens 
 
 
 Metrics day menus (Team and Overtime) list every day back about two months (weeks: 10, months: 3) plus any older day Metabase has, with **‹ ›** buttons to step to the previous / next day, week or month.
+
+
+Overtime pills show both clocks (e.g. **1 hr · 2–3 PM Manila · 10–11 PM PT**, the chosen time zone first). When Overtime opens and today has no overtime yet, it shows the latest day that has numbers (in the chosen time zone).
+
+
+Metrics columns follow the Metabase column names: `RECOMP_CARDS` shows as **Recomp** and `EV_CARDS` as **EV**, in that order (Recomp before EV, as in the card).

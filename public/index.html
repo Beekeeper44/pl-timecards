@@ -5300,7 +5300,7 @@ dialog::backdrop{background:var(--scrim)}
   document.addEventListener("click", e => { const b = e.target.closest("[data-addmember]"); if (b) { e.preventDefault(); openAddMember({ dept: b.dataset.dept || undefined, managerId: b.dataset.mgr || undefined }); } });
 
   // Sample "Cards today" rows (PL daily cards, Oct 30, 2026 — from the Metabase screenshot). Shown in the demo and in the live app until Metabase is connected.
-  const SAMPLE_COLS = ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "REVIEW_CARDS", "EV_CARDS", "RECOMP_CARDS", "SIGNATURE_CARDS", "GRADER_REJECTIONS", "VERIFIER_REJECTIONS"];
+  const SAMPLE_COLS = ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "REVIEW_CARDS", "RECOMP_CARDS", "EV_CARDS", "SIGNATURE_CARDS", "GRADER_REJECTIONS", "VERIFIER_REJECTIONS"];
   const SAMPLE_ROWS = [
     ["Aaron Adrianne Joaquin", 0, 0, 0, 0, 0, 0, 0, 0, 255, 232, 0, 0, 0, 487], ["Abe Dato", 12, 0, 1, 5, 5, 6, 30, 171, 0, 0, 3, 0, 0, 233],
     ["Abigael Calasin", 1, 134, 23, 0, 0, 0, 0, 0, 22, 22, 0, 0, 0, 202], ["Abraham Salisi", 5, 152, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 205],
@@ -5359,8 +5359,8 @@ dialog::backdrop{background:var(--scrim)}
     const real = SAMPLE_ROWS.map(r => ({ m: matchMemberLocal(r[0], all), name: r[0], v: SAMPLE_COLS.map((c, i) => r[i + 1]) }));
     // Everyone else gets made-up numbers for their team's usual tasks, so every team pill has data (CS doesn't do cards).
     const TEAM_TASKS = { Data: ["CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "CROP_CARDS"], Review: ["REVIEW_CARDS", "CROP_CARDS", "SURFACE_CARDS", "SIGNATURE_CARDS"],
-      Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "CROP_CARDS"], Recomp: ["EV_CARDS", "RECOMP_CARDS"], Items: ["CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "EV_CARDS", "RECOMP_CARDS"],
-      Community: ["SIGNATURE_CARDS", "REVIEW_CARDS"], Analysts: ["REVIEW_CARDS", "EV_CARDS"], Managers: ["REVIEW_CARDS"] };
+      Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "CROP_CARDS"], Recomp: ["RECOMP_CARDS", "EV_CARDS"], Items: ["CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "RECOMP_CARDS", "EV_CARDS"],
+      Community: ["SIGNATURE_CARDS", "REVIEW_CARDS"], Analysts: ["REVIEW_CARDS", "RECOMP_CARDS"], Managers: ["REVIEW_CARDS"] };
     const matched = new Set(real.filter(x => x.m).map(x => x.m.id));
     let s2 = 97; const r2 = n => { s2 = (s2 * 9301 + 49297) % 233280; return Math.floor(s2 / 233280 * n); };
     const made = all.filter(m => !matched.has(m.id) && TEAM_TASKS[m.dept]).map(m => {
@@ -5414,7 +5414,7 @@ dialog::backdrop{background:var(--scrim)}
   const colStyle = k => COL_TEAM[k] ? ` style="--tc:${deptColor(COL_TEAM[k])}"` : "";
   COL_LABEL.REJECTS = "Rejects";
   // Display order: Signature sits left of Review; grader + verifier rejections are combined into one "Rejects" column.
-  const COL_ORDER = ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "SIGNATURE_CARDS", "REVIEW_CARDS", "EV_CARDS", "RECOMP_CARDS"];
+  const COL_ORDER = ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "SIGNATURE_CARDS", "REVIEW_CARDS", "RECOMP_CARDS", "EV_CARDS"];   // Recomp before EV, like the Metabase card
   function displayCols(columns) {
     const base = columns.filter(c => !/REJECTION/.test(c) && c !== "REJECTS");
     const ordered = [...COL_ORDER.filter(c => base.includes(c)), ...base.filter(c => !COL_ORDER.includes(c))];
@@ -5423,7 +5423,7 @@ dialog::backdrop{background:var(--scrim)}
   const withRejects = v => { if (!v || v.REJECTS != null) return v; v.REJECTS = Object.keys(v).filter(k => /REJECTION/.test(k)).reduce((a, k) => a + (v[k] || 0), 0); return v; };
   const colLabel = k => COL_LABEL[k] || k.replace(/_CARDS$/, "").replace(/_/g, " ").toLowerCase().replace(/^\w/, c => c.toUpperCase());
   function demoProduction() {
-    const cols = Object.keys(COL_LABEL); const by = { Data: ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS"], Review: ["REVIEW_CARDS", "CROP_CARDS", "SURFACE_CARDS"], Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "CROP_CARDS"], Recomp: ["EV_CARDS", "RECOMP_CARDS"], Items: ["CARD_TYPE_CARDS", "REVIEW_CARDS", "EV_CARDS"], CS: [], Community: ["SIGNATURE_CARDS"], Managers: ["REVIEW_CARDS"] };
+    const cols = Object.keys(COL_LABEL); const by = { Data: ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS"], Review: ["REVIEW_CARDS", "CROP_CARDS", "SURFACE_CARDS"], Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "CROP_CARDS"], Recomp: ["RECOMP_CARDS", "EV_CARDS"], Items: ["CARD_TYPE_CARDS", "REVIEW_CARDS", "RECOMP_CARDS"], CS: [], Community: ["SIGNATURE_CARDS"], Managers: ["REVIEW_CARDS"] };
     let seed = 7; const rnd = n => { seed = (seed * 9301 + 49297) % 233280; return Math.floor(seed / 233280 * n); };
     const vis = isAdmin() ? activeMembers() : activeMembers().filter(m => m.id === me.id || m.managerId === me.id);
     const rows = activeMembers().filter(m => (by[m.dept] || []).length).map(m => { const v = Object.fromEntries(cols.map(c => [c, 0])); (by[m.dept] || []).forEach((c, i) => { v[c] = rnd(i === 0 ? 220 : 120); }); if (rnd(5) === 0) v.GRADER_REJECTIONS = rnd(3) + 1;
@@ -5438,6 +5438,10 @@ dialog::backdrop{background:var(--scrim)}
     pr.loading = true; pr.zone = zk;
     try { pr.data = DEMO ? { ...sampleProduction(), fetchedAt: refreshMb ? Date.now() : (pr.data?.fetchedAt || Date.now()) } : await api(`/api/data?production=1${pr.card === "overtime" ? `&card=overtime&slot=${pr.slot || 0}` : ""}&tz=${tz === PAY_TZ ? "manila" : "pacific"}&range=${pr.range}${pr.date ? `&date=${pr.date}` : ""}${refreshMb ? "&refresh=1" : ""}`); pr.at = Date.now(); if (pr.data?.cardId) pr.cfgCard = pr.data.cardId; }
     catch (e) { pr.data = { configured: true, error: e.message }; }
+    if (pr.card === "overtime" && !pr.date && pr.data && !pr.data.error && !(pr.data.rows || []).length && (pr.data.days || []).length) {
+      const td = pr.data.today || todayIn(tz), last = pr.data.days.filter(k => k <= td).sort().pop();
+      if (last && last !== (pr.data.from || pr.data.date)) { pr.date = last; pr.loading = false; return loadProduction(true); }   // nothing yet today: show the latest day with numbers
+    }
     // Not connected yet (or Metabase unreachable): show the sample day so the page isn't empty.
     if (pr.data && (!pr.data.configured || pr.data.error) && !DEMO) pr.data = sampleProduction(pr.data.error || (pr.data.configured ? "" : "Cards today is turned off in Manage dashboards."));
     pr.loading = false; renderSideNav(); if (view === "metrics") renderMetrics();
@@ -5496,9 +5500,9 @@ dialog::backdrop{background:var(--scrim)}
   function otHour(lab) {
     const hs = [...String(lab || "").matchAll(/(\d{1,2})(?::(\d{2}))?\s*([AP])M/gi)].map(m => ((+m[1] % 12) + (/p/i.test(m[3]) ? 12 : 0)) * 60 + (+m[2] || 0));
     if (hs.length < 2) return lab || "";
-    if (tz !== PAY_TZ) return String(lab).replace(/\s*–\s*/, "–");
     const day = todayIn("America/Los_Angeles"), f = mins => fmtIn(zonedToMs(`${day}T${String(Math.floor(mins / 60) % 24).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`, "America/Los_Angeles"), PAY_TZ, { hour: "numeric" });
-    return `${f(hs[0])}–${f(hs[1])} Manila`;
+    const pt = String(lab).replace(/\s*–\s*/, "–") + " PT", mn = `${f(hs[0])}–${f(hs[1])} Manila`;
+    return tz === PAY_TZ ? `${mn} · ${pt}` : `${pt} · ${mn}`;   // both clocks, the chosen one first
   }
   function productionHtml() {
     const d = pr.data; const admin = isAdmin(), lead = isLeadUser();
@@ -5619,7 +5623,7 @@ dialog::backdrop{background:var(--scrim)}
     try {
       if (DEMO) {
         if (!D.production) mym.data = { configured: false };
-        else { const cols = Object.keys(COL_LABEL); const byD = { Data: ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS"], Review: ["REVIEW_CARDS", "CROP_CARDS"], Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS"], Recomp: ["EV_CARDS", "RECOMP_CARDS"], Items: ["CARD_TYPE_CARDS", "EV_CARDS"], CS: [], Community: ["SIGNATURE_CARDS"], Managers: ["REVIEW_CARDS"] }[me.dept] || ["CROP_CARDS"];
+        else { const cols = Object.keys(COL_LABEL); const byD = { Data: ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS"], Review: ["REVIEW_CARDS", "CROP_CARDS"], Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS"], Recomp: ["RECOMP_CARDS", "EV_CARDS"], Items: ["CARD_TYPE_CARDS", "RECOMP_CARDS"], CS: [], Community: ["SIGNATURE_CARDS"], Managers: ["REVIEW_CARDS"] }[me.dept] || ["CROP_CARDS"];
           let seed = me.name.length * 31; const rnd = n => { seed = (seed * 9301 + 49297) % 233280; return Math.floor(seed / 233280 * n); };
           const series = []; for (let i = 13; i >= 0; i--) { const day = addDays(today, -i); const dow = new Date(day + "T00:00:00Z").getUTCDay(); if (dow === 0) continue; const v = Object.fromEntries(cols.map(c => [c, 0])); byD.forEach((c, j) => v[c] = rnd(j === 0 ? 200 : 110) + 10); if (rnd(6) === 0) v.GRADER_REJECTIONS = 1;
             series.push({ date: day, values: v, total: cols.filter(c => !/REJECT/.test(c)).reduce((a, c) => a + v[c], 0) }); }
