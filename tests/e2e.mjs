@@ -15,6 +15,7 @@ const MB_ROWS = [
   { WORK_DATE: "2026-11-02", FULL_NAME: "Benedict Bueno", REVIEW_CARDS: 0, CROP_CARDS: 51, TOTAL_CARDS: 51, TEAM: "PL" },
   { WORK_DATE: "2026-11-01", FULL_NAME: "Benedict Bueno", REVIEW_CARDS: 0, CROP_CARDS: 40, TOTAL_CARDS: 40, TEAM: "PL" },
   { WORK_DATE: "2026-11-02", FULL_NAME: "Ian f", REVIEW_CARDS: 0, CROP_CARDS: 21, TOTAL_CARDS: 278, TEAM: "PL" },
+  { WORK_DATE: "2026-11-02", FULL_NAME: "Ryan Paul Borsigue", EV_CARDS: 254, RECOMP_CARDS: 75, TOTAL_CARDS: 329, TEAM: "PL" },
 ];
 const OT_ROWS = [
   { FULL_NAME: "HOUR TOTAL", CROP_CARDS: 268, TOTAL_CARDS: 2180, TEAM: null, WORK_DATE: "2026-11-02", SHIFT_HOUR: 22 },
@@ -264,6 +265,10 @@ mn = await A.get({ production: "1", tz: "manila", range: "day", date: "2026-11-0
 ok(/Bueno:40/.test(nm(mn.body)) && !/Austin/.test(nm(mn.body)), `Manila Nov 2 = Metabase Nov 1, no cross-over (${nm(mn.body)})`);
 { const [ianf] = await q("select id from members where email='ianf@precisionlabeling.com'"); const ir = pt.body.rows.find(r => r.name === "Ian f");
   ok(ianf && ir && ir.memberId === ianf.id, "Metabase “Ian f” matches Ian Rey Yandra Fajardo (ianf@), not another Ian"); }
+{ const ry = pt.body.rows.find(r => /Ryan/.test(r.name)); ok(ry && ry.values.RECOMP_CARDS === 254 && ry.values.EV_CARDS === 75, `EV and Recomp are flipped by default (Recomp ${ry?.values.RECOMP_CARDS}, EV ${ry?.values.EV_CARDS})`); }
+await A.op({ op: "swapEvRecomp", on: false });
+{ const p2 = await A.get({ production: "1", tz: "pacific", range: "day", date: "2026-11-02" }); const ry = p2.body.rows.find(r => /Ryan/.test(r.name)); ok(ry.values.EV_CARDS === 254, "switching the swap off shows Metabase as-is"); }
+await A.op({ op: "swapEvRecomp", on: true });
 ok(pt.body.rows.find(r => r.name === "Kaity Paul")?.memberId == null, "an Oregon reviewer is never matched to a PL person by a similar name");
 
 step("8c2. Overtime board (admins only)");

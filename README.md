@@ -256,4 +256,4 @@ Metrics day menus (Team and Overtime) list every day back about two months (week
 Overtime pills show both clocks (e.g. **1 hr · 2–3 PM Manila · 10–11 PM PT**, the chosen time zone first). When Overtime opens and today has no overtime yet, it shows the latest day that has numbers (in the chosen time zone).
 
 
-Metrics columns follow the Metabase column names: `RECOMP_CARDS` shows as **Recomp** and `EV_CARDS` as **EV**, in that order (Recomp before EV, as in the card).
+Metrics shows **Recomp** before **EV**. Metabase has those two columns the wrong way round, so the app swaps them (Manage dashboards › **Swap EV and Recomp numbers**, on by default; untick once Metabase is fixed). Applies to Cards by task, Overtime and Personal.

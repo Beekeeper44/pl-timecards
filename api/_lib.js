@@ -464,19 +464,21 @@ export function metabaseEmbedUrl(kind, id, params = {}) {
 // Needs METABASE_API_KEY (Metabase › Admin › Settings › Authentication › API keys) and the saved question's number.
 const mbCache = new Map(); // cardId -> { at, rows, cols }
 export const MB_TTL_MS = 60 * 60 * 1000;   // refresh from Metabase every hour (admins can force a refresh)
+// every column that appears in any row (a summary row like TEAM TOTAL can leave some out)
+const allCols = rows => [...new Set(rows.slice(0, 500).flatMap(r => Object.keys(r || {})))];
 export async function metabaseCardRows(cardId, force = false) {
   const site = (MB_HOST() || "").replace(/\/+$/, ""), key = process.env.METABASE_API_KEY;
   if (!site || !key) throw Object.assign(new Error("Add METABASE_HOST and METABASE_API_KEY in Vercel to load card counts."), { status: 400 });
   if (!force) {
     const hit = mbCache.get(cardId); if (hit && Date.now() - hit.at < MB_TTL_MS) return hit;
     try { const [row] = await sql`select rows, round(extract(epoch from fetched_at) * 1000)::float8 as at from mb_cache where card_id = ${Number(cardId)}`;
-      if (row && Date.now() - row.at < MB_TTL_MS) { const out = { at: row.at, rows: row.rows, cols: row.rows[0] ? Object.keys(row.rows[0]) : [] }; mbCache.set(cardId, out); return out; } } catch (e) { /* table not ready yet */ }
+      if (row && Date.now() - row.at < MB_TTL_MS) { const out = { at: row.at, rows: row.rows, cols: allCols(row.rows) }; mbCache.set(cardId, out); return out; } } catch (e) { /* table not ready yet */ }
   }
   // format_rows=false: raw numbers and ISO dates instead of "1,234" / "October 30, 2026".
   const r = await fetch(`${site}/api/card/${Number(cardId)}/query/json`, { method: "POST", headers: { "x-api-key": key, "Content-Type": "application/x-www-form-urlencoded" }, body: "format_rows=false" });
   if (!r.ok) throw Object.assign(new Error(`Metabase answered ${r.status} for question ${cardId}. Check the number and that the API key’s group can view it.`), { status: 502 });
   const rows = await r.json();
-  const out = { at: Date.now(), rows: Array.isArray(rows) ? rows : [], cols: Array.isArray(rows) && rows[0] ? Object.keys(rows[0]) : [] };
+  const out = { at: Date.now(), rows: Array.isArray(rows) ? rows : [], cols: allCols(Array.isArray(rows) ? rows : []) };
   mbCache.set(cardId, out);
   try { await sql`insert into mb_cache (card_id, rows, fetched_at) values (${Number(cardId)}, ${JSON.stringify(out.rows)}::jsonb, now())
     on conflict (card_id) do update set rows = excluded.rows, fetched_at = now()`; } catch (e) { /* too big or table missing: memory cache still works */ }

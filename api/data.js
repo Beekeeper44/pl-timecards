@@ -75,6 +75,10 @@ export default async function handler(req, res) {
       const team = admin ? null : new Set([me.id]);   // only admins see the team; everyone else sees just their own numbers
       const num = v => typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
       data = { ...data, rows: data.rows.filter(r => !isTotalRow(r)) };
+      // Manage dashboards › "Swap EV and Recomp": Metabase has the two columns the wrong way round, so flip them here (on by default)
+      const [sw] = await sql`select value from settings where key = 'swap_ev_recomp'`;
+      const swapEv = sw ? sw.value === true : true;
+      if (swapEv) data = { ...data, rows: data.rows.map(r => ({ ...r, EV_CARDS: r.RECOMP_CARDS, RECOMP_CARDS: r.EV_CARDS })) };
       // Overtime: SHIFT_HOUR is a Pacific clock hour ("10 PM – 11 PM"). Slots go in order from the end of the shift (1 hr, 2 hr…).
       let slots = [];
       if (ot) {
@@ -266,12 +270,13 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
+      const swapEvRecomp = ((await sql`select value from settings where key = 'swap_ev_recomp'`)[0]?.value ?? true) === true;
       const idleSignout = +((await sql`select value from settings where key = 'idle_signout'`)[0]?.value || 0);
       const reviewQuestions = (await sql`select value from settings where key = 'review_questions'`)[0]?.value || null;
       const metricsTeams = (await sql`select value from settings where key = 'metrics_teams'`)[0]?.value || {};
       const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { swapEvRecomp, idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -715,6 +720,11 @@ export default async function handler(req, res) {
         if (added.length) await sql`insert into member_history (member_id, field, old_value, new_value, changed_by)
           select id, 'added', null, name, ${me.id} from members where id = any(${added}::uuid[])`;
         return send(res, 200, { ok: true, added: added.length, updated: up.length - added.length, skipped });
+      }
+      case "swapEvRecomp": {
+        await sql`insert into settings (key, value) values ('swap_ev_recomp', ${JSON.stringify(!!b.on)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+        await sql`delete from mb_cache`.catch(() => {});
+        return send(res, 200, { ok: true, on: !!b.on });
       }
       case "productionSave": {
         const cardId = Number(b.cardId) || null;
