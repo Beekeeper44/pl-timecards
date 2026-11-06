@@ -282,6 +282,23 @@ otr = await A.get({ production: "1", card: "overtime", tz: "manila", range: "day
 ok(otr.body.rows.length === 3, "Manila Nov 3 shows the same overtime as Pacific Nov 2 (hour given as 22 works too)");
 otr = await K.get({ production: "1", card: "overtime" }); ok(otr.status === 403, "team members can’t see overtime");
 
+step("8c3. Habits that repeat every workday");
+{ const [{ d0 }] = await q("select ((now() at time zone 'Asia/Manila')::date)::text as d0");
+  r = await A.op({ op: "setSchedule", memberId: khimRow.id, codes: ["5H", "6H"], repeat: true });
+  const auto = await q("select day::text, codes, auto from schedules where member_id=$1 and day > $2::date and auto order by day", [khimRow.id, d0]);
+  ok(r.status === 200 && auto.length >= 8 && auto.every(x => x.codes.join() === "5H,6H"), `5H + 6H repeat on the next workdays (${auto.length} days filled)`);
+  const later = auto[2].day;
+  await A.op({ op: "setSchedule", memberId: khimRow.id, day: later, codes: ["NS"] });
+  r = await A.op({ op: "setSchedule", memberId: khimRow.id, codes: ["5H"], repeat: true });
+  const [hand] = await q("select codes, auto from schedules where member_id=$1 and day=$2", [khimRow.id, later]);
+  const [next] = await q("select codes from schedules where member_id=$1 and day=$2", [khimRow.id, auto[0].day]);
+  ok(hand.codes.join() === "NS" && !hand.auto && next.codes.join() === "5H", "changing the repeat updates the coming days but keeps a day set by hand");
+  r = await A.op({ op: "setSchedule", memberId: khimRow.id, codes: [], repeat: false });
+  const [{ n: left }] = await q("select count(*)::int n from schedules where member_id=$1 and day > $2::date and auto", [khimRow.id, d0]);
+  const [mk] = await q("select default_codes from members where id=$1", [khimRow.id]);
+  ok(left === 0 && mk.default_codes.length === 0, "switching repeat off clears the coming days");
+  await q("delete from schedules where member_id=$1 and day > $2::date", [khimRow.id, d0]); }
+
 step("8d. Admin “any time” switch");
 r = await A.op({ op: "adminAnyTime", memberId: alan.id, on: false });
 let [aon] = await q("select anytime_off from members where id=$1", [alan.id]); ok(r.status === 200 && aon.anytime_off === true, "admin switches their any-time off");
@@ -331,6 +348,18 @@ step("9a. An admin being reviewed fills in the self review, not the manager part
       if (kr2) { await A.op({ op: "reviewSendSelf", ids: [kr2.id], questions: ["Q1"] });
         r = await A.op({ op: "reviewUnsend", id: kr2.id, part: "self" }); const [u] = await q("select self_sent_at from reviews where id=$1", [kr2.id]);
         ok(r.status === 200 && u.self_sent_at === null, "Unsend takes a sent self review back"); } } } }
+
+step("9a2. Add teams to a running cycle");
+{ r = await A.op({ op: "cycleCreate", name: "Managers only", kind: "Performance", depts: ["Managers"] });
+  const [cy] = await q("select id from review_cycles where name='Managers only'");
+  const [{ n: before }] = await q("select count(*)::int n from reviews where cycle_id=$1", [cy.id]);
+  r = await A.op({ op: "cycleAddPeople", id: cy.id, depts: ["Data", "Managers"] });
+  const [{ n: after }] = await q("select count(*)::int n from reviews where cycle_id=$1", [cy.id]);
+  const [{ n: data }] = await q("select count(*)::int n from members where active and dept='Data'");
+  ok(r.status === 200 && after === before + data && r.body.added === data, `Add teams adds the Data team and skips people already in it (+${r.body.added})`);
+  r = await A.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); const [{ n: all }] = await q("select count(*)::int n from members where active");
+  const [{ n: now }] = await q("select count(*)::int n from reviews where cycle_id=$1", [cy.id]); ok(now === all, "Everyone adds the rest of the team");
+  r = await K.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); ok(r.status === 403, "team members can’t add people"); }
 
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });

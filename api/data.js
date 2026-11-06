@@ -1,4 +1,4 @@
-import { DEFAULT_OVERTIME_QUESTION, renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
+import { fillRepeatingSchedules, DEFAULT_OVERTIME_QUESTION, renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
 
 const dayOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || "");
 // Meeting link: an https web address (Google Meet, Zoom, Teams…); "meet.google.com/abc-defg-hij" gets https:// added.
@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     }
     const me = await currentUser(req);
     if (!me) return fail(res, 401, "Signed out");
+    if (req.method === "GET") await fillRepeatingSchedules().catch(() => {});
     renewSession(req, res, me);   // keep active people signed in
     const admin = me.role === "admin";
     // Late / left early: tell the person's manager (or the admins if they have none), in the app and by email.
@@ -187,7 +188,7 @@ export default async function handler(req, res) {
       const members$ = admin
         ? sql`select id, name, email, phone, dept, role, active, pin_hash is not null as "hasPin", round(extract(epoch from invited_at) * 1000)::float8 as "invitedAt",
             manager_id as "managerId", rung, tier, to_char(start_date, 'YYYY-MM-DD') as "startDate",
-            job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", pay_type as "payType", overtime,
+            job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", pay_type as "payType", overtime,
             salary::float8 as salary, allowance::float8 as allowance , round(extract(epoch from photo_at) * 1000)::float8 as "photoV", org_solo as "orgSolo" from members order by name`
         : sql`select id, name, dept, role, active, manager_id as "managerId",
             rung, case when id = ${me.id} then tier end as tier,
@@ -548,7 +549,14 @@ export default async function handler(req, res) {
       if (!admin) return fail(res, 403, "Only admins can turn 5H, 6H, NS, CS or OS on or off.");
       const day = dayOk(b.day) && (admin || who !== me.id) ? b.day : null;
       await sql`insert into schedules (member_id, day, codes) values (${who}, coalesce(${day}::date, (now() at time zone ${PAY_TZ})::date), ${codes})
-        on conflict (member_id, day) do update set codes = excluded.codes, updated_at = now()`;
+        on conflict (member_id, day) do update set codes = excluded.codes, auto = false, updated_at = now()`;
+      // 🔁 Repeat every workday: these codes become their standing schedule from this day on (until changed or switched off)
+      if (b.repeat !== undefined) {
+        const from = day || (await sql`select (now() at time zone ${PAY_TZ})::date::text as d`)[0].d;
+        await sql`update members set default_codes = ${b.repeat ? codes : []} where id = ${who}`;
+        await sql`delete from schedules where member_id = ${who} and auto and day > ${from}::date`;
+        await fillRepeatingSchedules(true);
+      }
       return send(res, 200, { ok: true });
     }
     if (b.op === "toRequest") {
@@ -798,6 +806,17 @@ export default async function handler(req, res) {
         // Nobody is notified yet: admins/managers send each person their self review with "Send self review".
         return send(res, 200, { ok: true, created: ins.length });
       }
+      case "cycleAddPeople": {
+        // Add teams (or everyone) to a cycle that's already running; people already in it are skipped. Reviewer = their manager.
+        const depts = Array.isArray(b.depts) ? b.depts.filter(x => DEPTS.includes(x)) : [];
+        const all = !!b.everyone;
+        if (!all && !depts.length) return fail(res, 400, "Pick at least one team.");
+        const ins = await sql`insert into reviews (cycle_id, member_id, reviewer_id)
+          select ${b.id}, m.id, coalesce(m.manager_id, ${me.id}) from members m
+          where m.active and (${all} or m.dept = any(${depts}::text[]))
+            and not exists (select 1 from reviews r where r.cycle_id = ${b.id} and r.member_id = m.id) returning member_id`;
+        return send(res, 200, { ok: true, added: ins.length });
+      }
       case "cycleDates": {
         // Change the self review due date or the Year End Review due date.
         if (b.due !== undefined) await sql`update review_cycles set due = ${dayOk(b.due) ? b.due : null} where id = ${b.id}`;
@@ -884,7 +903,7 @@ export default async function handler(req, res) {
             }
             const has = k => f[k] !== undefined;
             const [before] = await sql`select name, email, phone, dept, role, active, manager_id as "managerId", rung, tier,
-              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
+              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
             if (!before) return fail(res, 404, "That person isn’t on the roster.");
             await sql`update members set
               name = coalesce(${name ?? null}, name), email = coalesce(${email ?? null}, email),
@@ -908,7 +927,7 @@ export default async function handler(req, res) {
               where id = ${b.id}`;
             // Profile history: one row per field that actually changed.
             const [after] = await sql`select name, email, phone, dept, role, active, manager_id as "managerId", rung, tier,
-              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
+              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
             const str = v => v == null ? null : String(v);
             for (const k of Object.keys(after)) {
               if (str(before[k]) !== str(after[k]))

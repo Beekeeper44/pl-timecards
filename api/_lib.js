@@ -181,7 +181,9 @@ async function migrate() {
     await sql`create table if not exists mb_cache (card_id int primary key, fetched_at timestamptz not null default now(), rows jsonb not null)`;
     await sql`alter table meetings add column if not exists link text`;   // Google Meet (or Zoom/Teams) link for the 1:1
     await sql`alter table members add column if not exists meet_link text`;
-    await sql`alter table members add column if not exists anytime_off boolean not null default false`;   // admin switched their "any time" off   // this person's usual 1:1 meeting link (used when they book a 1:1)
+    await sql`alter table members add column if not exists anytime_off boolean not null default false`;
+    await sql`alter table members add column if not exists default_codes text[] not null default '{}'`;   // habits that repeat every workday
+    await sql`alter table schedules add column if not exists auto boolean not null default false`;      // row filled from default_codes   // admin switched their "any time" off   // this person's usual 1:1 meeting link (used when they book a 1:1)
     // One-time: Alan's usual Google Meet room, also on his upcoming 1:1s that don't have a link yet.
     const [ml] = await sql`insert into settings (key, value) values ('meet_link_alan_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (ml) {
@@ -229,6 +231,17 @@ const b64u = b => Buffer.from(b).toString("base64url");
 // Personal sign-up link: proves the person by the link itself (sent to their work email or handed over by an admin), good for 14 days
 // and only until they've created a password. Admin "Reset password" makes a fresh one work again.
 export const inviteToken = m => sign({ inv: m.id, em: String(m.email || "").toLowerCase(), exp: Date.now() + 14 * 86400e3 });
+// Habits set to "Repeat every workday": fill the next two weeks of workdays that have no schedule yet (a day changed by hand is never overwritten).
+let lastFill = 0;
+export async function fillRepeatingSchedules(force) {
+  if (!force && Date.now() - lastFill < 5 * 60000) return; lastFill = Date.now();
+  const sh = await getShift(), days = (sh.days && sh.days.length ? sh.days : [1, 2, 3, 4, 5]).map(Number);
+  await sql`insert into schedules (member_id, day, codes, auto)
+    select m.id, d::date, m.default_codes, true from members m,
+      generate_series((now() at time zone ${PAY_TZ})::date, (now() at time zone ${PAY_TZ})::date + 13, interval '1 day') d
+    where m.active and cardinality(m.default_codes) > 0 and extract(isodow from d)::int = any(${days}::int[])
+    on conflict (member_id, day) do nothing`;
+}
 export function sign(payload) {
   const p = b64u(JSON.stringify(payload));
   const sig = crypto.createHmac("sha256", SECRET()).update(p).digest("base64url");

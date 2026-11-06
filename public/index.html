@@ -326,6 +326,9 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .sbtn.sadm svg{width:14px;height:14px} .hcode.admc{color:var(--blue)} .hcode.admc svg{width:16px;height:16px;color:var(--blue)} .hcode.admc b{color:var(--blue)} .sbtn.sadm small{display:none}
 .prtable tr.prnone td{opacity:.55} .prtable tr.prnone td.tot{color:var(--muted)}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:8px} .chk input{margin-top:3px}
+.rvsendbtns{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+#caDepts .cnt{opacity:.7;margin-left:4px;font-weight:500}
+.sbtn.srep{white-space:nowrap} .sbtn.srep.sel{color:var(--green)!important;border-color:color-mix(in srgb,var(--green) 55%,var(--line2))!important;background:color-mix(in srgb,var(--green) 12%,transparent)!important}
 .otslots{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0} .otslots .hl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .otslots .fpill small{margin-left:6px;color:var(--muted);font-weight:500}
 .rvundo{display:block;font-size:12px;margin:3px 0 0;color:var(--red)!important;position:relative;z-index:1}
@@ -2230,6 +2233,7 @@ dialog::backdrop{background:var(--scrim)}
   <form class="dlg" method="dialog">
     <h2 id="scTitle2">Schedule</h2>
     <div class="sccodes" id="scCodes"></div>
+    <label class="chk"><input type="checkbox" id="scRepeat"> 🔁 Repeat every workday from this day on <span class="dim">(stays until you change it; days you set by hand aren’t overwritten)</span></label>
     <div class="btns"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
   </form>
 </dialog>
@@ -2261,6 +2265,14 @@ dialog::backdrop{background:var(--scrim)}
     <h2>Review questions</h2>
     <div id="rqBody"></div>
     <div class="btns spread"><button class="btn" type="button" id="rqReset">Reset to the original questions</button><span class="grow"></span><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" value="save" id="rqSave">Save questions</button></div>
+  </form>
+</dialog>
+<dialog id="dlgCycAdd">
+  <form class="dlg" method="dialog">
+    <h2>Add teams to this cycle</h2>
+    <div class="note">Everyone active in the teams you pick gets a review, with their manager as the reviewer. People already in the cycle are skipped. Nothing is sent until you use <b>Send to …</b>.</div>
+    <div class="daychips wrapchips" id="caDepts"></div>
+    <div class="btns"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok" id="caOk">Add</button></div>
   </form>
 </dialog>
 <dialog id="dlgCycle" class="wide">
@@ -2727,6 +2739,10 @@ dialog::backdrop{background:var(--scrim)}
       if (q.get("card")) { if (!okM(q.get("card"))) derr(403, "Not your team."); return { card: D.shifts.filter(x => x.memberId === q.get("card") && (!f || x.day >= f) && (!z || x.day <= z)).sort((a, b) => b.in - a.in).map(copy) }; }
       const sched = []; Object.entries(D.schedDays || {}).forEach(([k, codes]) => { const [mid, day] = k.split("|"); if (day >= f && day <= z && okM(mid)) sched.push({ memberId: mid, day, codes }); });
       Object.entries(D.sched || {}).forEach(([mid, codes]) => { const day = dayKey(Date.now()); if (day >= f && day <= z && okM(mid) && !sched.some(x => x.memberId === mid && x.day === day)) sched.push({ memberId: mid, day, codes }); });
+      // repeating habits fill workdays from today on that have nothing set (like the server)
+      const td0 = dayKey(Date.now()), wd = (D.shift?.days || [1, 2, 3, 4, 5]).map(Number);
+      D.members.filter(m => (m.repeatCodes || []).length && okM(m.id)).forEach(m => { for (let k = td0; k <= z && k <= addDays(td0, 13); k = addDays(k, 1)) { const dow = new Date(k + "T12:00:00Z").getUTCDay() || 7;
+        if (k >= f && wd.includes(dow) && !sched.some(x => x.memberId === m.id && x.day === k)) sched.push({ memberId: m.id, day: k, codes: [...m.repeatCodes], auto: true }); } });
       return { rangeShifts: D.shifts.filter(x => x.day >= f && x.day <= z && okM(x.memberId)).map(copy), rangeSched: sched };
     }
     if ((opts.method || "GET") === "GET" && path.includes("history=")) {
@@ -2822,7 +2838,8 @@ dialog::backdrop{background:var(--scrim)}
       case "shiftApprove": { const ids = b.ids || []; ids.forEach(id => { const x = D.shifts.find(y => y.id === id); if (!x || x.open) return; const ok = admin || D.members.find(m => m.id === x.memberId)?.managerId === D.meId; if (!ok) derr(403, "Not your team."); x.approval = b.status; x.approvalNote = b.note || ""; if (b.status === "rejected") D.notifs.push({ id: did(), memberId: x.memberId, kind: "denied", title: `Your timecard for ${fmtDayKey(x.day)} wasn’t approved`, body: b.note || "", link: "#mytime", read: false, at: Date.now() }); }); return { ok: true, count: ids.length }; }
       case "shiftRemove": { const ids = new Set(b.ids || []); D.shifts = D.shifts.filter(x => !ids.has(x.id)); return { ok: true, count: ids.size }; }
       case "notifRead": { D.notifs.forEach(n => { if (n.memberId === D.meId && (b.all || n.id === b.id)) n.read = true; }); return { ok: true }; }
-      case "setSchedule": if (!admin) derr(403, "Only admins can turn 5H, 6H, NS, CS or OS on or off."); if (b.day && b.day !== dayKey(Date.now())) { D.schedDays = D.schedDays || {}; D.schedDays[(b.memberId || D.meId) + "|" + b.day] = (b.codes || []).slice(); return { ok: true }; } { const who = b.memberId || D.meId; if (who !== D.meId && !admin) derr(403, "Only admins can set someone else’s schedule."); D.sched[who] = (b.codes || []).filter(c => ["5H", "6H", "CS", "OS", "NS"].includes(c)); return { ok: true }; }
+      case "setSchedule": if (!admin) derr(403, "Only admins can turn 5H, 6H, NS, CS or OS on or off.");
+        if (b.repeat !== undefined) { const m0 = D.members.find(x => x.id === (b.memberId || D.meId)); if (m0) m0.repeatCodes = b.repeat ? (b.codes || []) : []; } if (b.day && b.day !== dayKey(Date.now())) { D.schedDays = D.schedDays || {}; D.schedDays[(b.memberId || D.meId) + "|" + b.day] = (b.codes || []).slice(); return { ok: true }; } { const who = b.memberId || D.meId; if (who !== D.meId && !admin) derr(403, "Only admins can set someone else’s schedule."); D.sched[who] = (b.codes || []).filter(c => ["5H", "6H", "CS", "OS", "NS"].includes(c)); return { ok: true }; }
       case "toCancel": { const r = D.timeOff.find(x => x.id === b.id); if (r.memberId !== D.meId && !admin) derr(403, "Only pending requests can be cancelled."); r.status = "cancelled"; r.decidedAt = Date.now(); r.decidedBy = D.meId;
         if (r.memberId !== D.meId) D.notifs.push({ id: did(), memberId: r.memberId, kind: "cancelled", title: `Your ${r.type} (${fmtRange(r)}) was cancelled by ${meM.name}`, body: b.note || "", link: "#mytime-requests", refId: r.id, read: false, at: Date.now() }); return { ok: true }; }
     }
@@ -2877,6 +2894,9 @@ dialog::backdrop{background:var(--scrim)}
       case "resetPin": D.members.find(x => x.id === b.id).hasPin = false; return { ok: true };
       case "inviteLinks": return { ok: true, links: (b.ids || []).map(id => D.members.find(x => x.id === id)).filter(Boolean).map(m => { if (!m.hasPin && !m.invitedAt) m.invitedAt = Date.now(); return { id: m.id, name: m.name, email: m.email, signedUp: !!m.hasPin, link: `https://pl-time-cards.vercel.app/?join=demo-${m.id.slice(0, 8)}` }; }) };
       case "adminAnyTime": { const m0 = D.members.find(x => x.id === b.memberId); if (!m0 || m0.role !== "admin") derr(400, "Only admins have this switch."); m0.anytimeOff = !b.on; return { ok: true }; }
+      case "cycleAddPeople": { const have = new Set((D.reviews || []).filter(r => r.cycleId === b.id).map(r => r.memberId)); let n = 0;
+        D.members.filter(m => m.active !== false && (b.everyone || (b.depts || []).includes(m.dept)) && !have.has(m.id)).forEach(m => { D.reviews.push({ id: did(), cycleId: b.id, memberId: m.id, reviewerId: m.managerId || D.meId, status: "draft" }); n++; });
+        return { ok: true, added: n }; }
       case "reviewUnsend": { const r0 = (D.reviews || []).find(x => x.id === b.id); if (!r0) derr(404, "That review is gone.");
         if (b.part === "self") { if (r0.selfSubmittedAt) derr(400, "They already submitted it. Use Unlock to let them change it."); r0.selfSentAt = null; }
         else if (r0.status === "shared") { r0.status = "draft"; r0.sharedAt = null; } return { ok: true }; }
@@ -3752,6 +3772,9 @@ dialog::backdrop{background:var(--scrim)}
   const codeOn = c => ((shiftCfg.habits || DEFAULT_HABITS)[c] || {}).enabled !== false;
   const SCHED_ON = () => SCHED.filter(([c]) => codeOn(c));
   // Admins get an Admin chip instead of CS when "Admins" is on in Clock in any time; each admin can switch theirs on or off.
+  // 🔁 Repeat every workday: today’s habits become this person’s standing schedule
+  const repeatOn = m => !!m && (m.repeatCodes || []).length > 0;
+  const repeatBtn = (m, attr) => `<button type="button" class="sbtn srep ${repeatOn(m) ? "sel" : ""}" ${attr} aria-pressed="${repeatOn(m)}" title="${repeatOn(m) ? `Repeating every workday: ${(m.repeatCodes || []).join(" + ")}. Click to stop.` : "Keep these habits every workday (not just today)"}">🔁 Every day${repeatOn(m) ? " ✓" : ""}</button>`;
   const adminChipShown = m => !!m && m.role === "admin" && (shiftCfg.flexDepts || []).includes("Admins");
   const adminAnyTime = m => adminChipShown(m) && !m.anytimeOff;
   const schedFor = m => SCHED_ON().filter(([c]) => !(c === "CS" && adminChipShown(m)));
@@ -3813,13 +3836,15 @@ dialog::backdrop{background:var(--scrim)}
       <div class="hbtns">${btns}</div>
       ${stat}
       ${!isAdmin() ? "" : `<div class="hsched"><span class="hl">Schedule</span>${adminChip(m)}${schedFor(m).map(([c, k]) => `<button class="sbtn ${k} ${codes.includes(c) ? "sel" : ""}" data-sched="${c}" aria-pressed="${codes.includes(c)}" ${c === "CS" && isFlexTeam(m) ? 'disabled title="Always on for the CS team"' : `title="${esc(schedTip(c, t))}"`}>${c}${codes.includes(c) ? " ✓" : ""}</button>`).join("")}
-        <span class="sdiv"></span><button class="sbtn preset" data-sched-set="5H,6H">5H+6H</button><button class="sbtn preset" data-sched-set="">✕ Clear</button></div>`}
+        <span class="sdiv"></span><button class="sbtn preset" data-sched-set="5H,6H">5H+6H</button><button class="sbtn preset" data-sched-set="">✕ Clear</button>${repeatBtn(m, "data-sched-rep")}</div>`}
     </div>`;
   }
   function wireHero(root, m) {
     wireClockButtons(root);
     root.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => { const s = dismissed(); s.add(b.dataset.dismiss); try { localStorage.setItem(dismissKey(), JSON.stringify([...s])); } catch (e) {} renderMyTime(); });
-    const save = codes => { mySched = codes; renderMyTime(); run(() => dataCall({ op: "setSchedule", codes }), null); };
+    const save = (codes, repeat) => { mySched = codes; const mm = memberById(me.id); if (repeat !== undefined && mm) mm.repeatCodes = repeat ? codes : []; else if (repeatOn(mm)) { mm.repeatCodes = codes; repeat = true; }
+      renderMyTime(); run(() => dataCall({ op: "setSchedule", codes, ...(repeat !== undefined ? { repeat } : {}) }), repeat === undefined ? null : repeat ? (codes.length ? `${codes.join(" + ")} every workday` : "Nothing to repeat yet: turn on 5H, 6H or NS first") : "Back to today only"); };
+    root.querySelectorAll("[data-sched-rep]").forEach(b => b.onclick = () => save(mySched || [], !repeatOn(memberById(me.id))));
     root.querySelectorAll("[data-sched]").forEach(b => b.onclick = () => { const c = b.dataset.sched; const cur = new Set(mySched || []); cur.has(c) ? cur.delete(c) : cur.add(c); save(SCHED.map(x => x[0]).filter(x => cur.has(x))); });
     root.querySelectorAll("[data-sched-set]").forEach(b => b.onclick = () => save(b.dataset.schedSet ? b.dataset.schedSet.split(",") : []));
   }
@@ -4432,9 +4457,10 @@ dialog::backdrop{background:var(--scrim)}
         ${cyc ? `<div class="panel"><div class="weekhead"><div><div class="wtitle">${esc(cyc.name)} <span class="chip2" style="vertical-align:2px">${esc(kindOf(cyc))}</span></div><div class="note">${cyc.periodStart ? `${fmtDayKey(cyc.periodStart, { month: "short", day: "numeric" })} – ${fmtDayKey(cyc.periodEnd, { month: "short", day: "numeric", year: "numeric" })} · ` : ""}${shared} of ${rows.length} reviews sent</div>
               <div class="rvdues">${admin ? `<label>${esc(selfName(cyc.name))} due <input type="date" class="field sm" data-cycdue="due" value="${cyc.due || ""}"></label><label>${esc(cyc.name)} due <input type="date" class="field sm" data-cycdue="reviewDue" value="${cyc.reviewDue || ""}"></label>`
                 : `<span>${esc(selfName(cyc.name))} due <b>${cyc.due ? fmtDayKey(cyc.due, { month: "short", day: "numeric" }) : "—"}</b></span><span>${esc(cyc.name)} due <b>${cyc.reviewDue ? fmtDayKey(cyc.reviewDue, { month: "short", day: "numeric", year: "numeric" }) : "—"}</b></span>`}</div></div>
-            <div class="rvhbtns">${admin ? `<button class="btn sm" data-cycstat="${cyc.id}" data-to="${cyc.status === "open" ? "closed" : "open"}">${cyc.status === "open" ? "Close cycle" : "Reopen cycle"}</button>` : ""}</div></div>
+            <div class="rvhbtns">${admin && cyc.status === "open" ? `<button class="btn sm" data-cycadd="${cyc.id}">＋ Add teams</button>` : ""}${admin ? `<button class="btn sm" data-cycstat="${cyc.id}" data-to="${cyc.status === "open" ? "closed" : "open"}">${cyc.status === "open" ? "Close cycle" : "Reopen cycle"}</button>` : ""}</div></div>
           <div class="rvsteps">
-            <div class="rvstep ${nSent === rows.length ? "ok" : ""}"><i>1</i><div><b>Send ${esc(selfName(cyc.name))}</b><small>${nSent} of ${rows.length} sent · unlocks it for them</small></div>${cyc.status === "open" && unsent.length ? `<button class="btn sm primary" data-sendself="${unsent.map(x => x.r.id).join(",")}">Send to ${unsent.length}</button>` : ""}</div>
+            <div class="rvstep ${nSent === rows.length ? "ok" : ""}"><i>1</i><div><b>Send ${esc(selfName(cyc.name))}</b><small>${nSent} of ${rows.length} sent · unlocks it for them</small></div>${cyc.status === "open" && unsent.length ? (() => { const mine = unsent.filter(x => x.r.reviewerId === me.id);
+              return `<span class="rvsendbtns">${mine.length && mine.length < unsent.length ? `<button class="btn sm" data-sendself="${mine.map(x => x.r.id).join(",")}" title="People you review">My team · ${mine.length}</button>` : ""}<button class="btn sm primary" data-sendself="${unsent.map(x => x.r.id).join(",")}" title="Everyone in this cycle who hasn’t got it yet">Send to everyone · ${unsent.length}</button></span>`; })() : ""}</div>
             <div class="rvstep ${nSub === rows.length ? "ok" : ""}"><i>2</i><div><b>Team writes it</b><small>${nSub} of ${rows.length} submitted${cyc.due ? ` · due ${fmtDayKey(cyc.due, { month: "short", day: "numeric" })}` : ""}</small></div></div>
             <div class="rvstep ${nWritten === rows.length ? "ok" : ""}"><i>3</i><div><b>Write ${esc(cyc.name)}s</b><small>${nWritten} of ${rows.length} started · ${ready.length + shared} with all votes</small></div></div>
             <div class="rvstep ${shared === rows.length ? "ok" : ""}"><i>4</i><div><b>Send ${esc(cyc.name)}</b><small>${shared} of ${rows.length} sent${cyc.reviewDue ? ` · due ${fmtDayKey(cyc.reviewDue, { month: "short", day: "numeric" })}` : ""}</small></div>${ready.length ? `<button class="btn sm primary" data-sendmany="${ready.map(x => x.r.id).join(",")}">Send ${ready.length} finished</button>` : ""}</div>
@@ -4459,6 +4485,17 @@ dialog::backdrop{background:var(--scrim)}
     $("reviewsBody").innerHTML = html;
     const B = $("reviewsBody");
     B.querySelectorAll("[data-cyc]").forEach(b => b.onclick = () => { selCycle = b.dataset.cyc; renderReviews(); });
+    B.querySelectorAll("[data-cycadd]").forEach(b => b.onclick = () => {
+      const cid = b.dataset.cycadd, inCyc = new Set(reviews.filter(r => r.cycleId === cid).map(r => r.memberId));
+      const left = d => activeMembers().filter(m => (d === "*" || m.dept === d) && !inCyc.has(m.id)).length;
+      const picked = new Set();
+      const draw = () => { $("caDepts").innerHTML = [["*", "Everyone"], ...DEPTS.map(([d]) => [d, d])].filter(([d]) => left(d)).map(([d, l]) => `<button type="button" class="${picked.has(d) ? "on" : ""}" aria-pressed="${picked.has(d)}" data-cad="${esc(d)}">${esc(l)} <span class="cnt">${left(d)}</span></button>`).join("") || '<span class="dim">Everyone is already in this cycle.</span>';
+        $("caDepts").querySelectorAll("[data-cad]").forEach(x => x.onclick = () => { const d = x.dataset.cad; picked.has(d) ? picked.delete(d) : picked.add(d); if (d === "*" && picked.has("*")) { picked.clear(); picked.add("*"); } else picked.delete("*"); draw(); });
+        $("caOk").disabled = !picked.size; };
+      draw(); const dl = $("dlgCycAdd"); dl.returnValue = ""; dl.showModal();
+      dl.addEventListener("close", () => { if (dl.returnValue !== "ok" || !picked.size) return;
+        run(() => dataCall({ op: "cycleAddPeople", id: cid, everyone: picked.has("*"), depts: [...picked].filter(x => x !== "*") }), "Added to the cycle. Use Send to … to send their self reviews."); }, { once: true });
+    });
     B.querySelectorAll("[data-unsend]").forEach(b => b.onclick = async e => { e.stopPropagation();
       const [part, id] = b.dataset.unsend.split(":"), r0 = reviews.find(x => x.id === id), cy = cycles.find(c => c.id === r0?.cycleId) || {}, who = nm(r0?.memberId);
       const what = part === "self" ? selfName(cy.name) : cy.name;
@@ -5018,13 +5055,16 @@ dialog::backdrop{background:var(--scrim)}
     $("scTitle2").textContent = `${m?.name || ""} · ${fmtDayKey(day)}`;
     $("scCodes").innerHTML = SCHED_ON().map(([c, k]) => `<button type="button" class="sbtn ${k} ${cur.has(c) ? "sel" : ""}" data-scc="${c}" aria-pressed="${cur.has(c)}">${c}${cur.has(c) ? " ✓" : ""}<small>${esc(habitOf(c).label)}</small></button>`).join("");
     $("scCodes").querySelectorAll("[data-scc]").forEach(b => b.onclick = () => { const on = !b.classList.contains("sel"); b.classList.toggle("sel", on); b.setAttribute("aria-pressed", String(on)); b.firstChild.textContent = b.dataset.scc + (on ? " ✓" : ""); });
+    $("scRepeat").checked = repeatOn(m);
     $("dlgSch").dataset.k = `${mid}|${day}`; $("dlgSch").showModal();
   }
   $("dlgSch").addEventListener("close", () => {
     if ($("dlgSch").returnValue !== "save") return;
     const [mid, day] = $("dlgSch").dataset.k.split("|");
     const codes = [...$("scCodes").querySelectorAll(".sel")].map(b => b.dataset.scc);
-    dataCall({ op: "setSchedule", memberId: mid, day, codes }).then(() => { toast("Schedule saved"); rng.key = ""; renderSchedule(); load(); }).catch(e => toast(e.message));
+    const repeat = $("scRepeat").checked, m0 = memberById(mid);
+    const send = repeat || repeatOn(m0) ? { repeat } : {};
+    dataCall({ op: "setSchedule", memberId: mid, day, codes, ...send }).then(() => { toast(repeat ? `Saved · ${codes.length ? codes.join(" + ") : "nothing"} every workday` : "Schedule saved"); rng.key = ""; renderSchedule(); load(); }).catch(e => toast(e.message));
   });
 
   // ---------- Team overview › Breakdown (admins) ----------
@@ -6210,17 +6250,21 @@ dialog::backdrop{background:var(--scrim)}
         <div class="hbtns">${btns}</div>
       </div>
       ${!admin ? (codesRowHtml(codes, now()) ? `<div class="pcl-sched">${codesRowHtml(codes, now())}</div>` : "") : `<div class="hsched pcl-sched"><span class="hl">Schedule today</span>${adminChip(m)}${schedFor(m).map(([c, k]) => `<button class="sbtn ${k} ${codes.includes(c) ? "sel" : ""}" data-psched="${c}" aria-pressed="${codes.includes(c)}" ${canCodes && !(c === "CS" && isFlexTeam(m)) ? "" : "disabled"} title="${c === "CS" && isFlexTeam(m) ? "Always on for the CS team" : esc(schedTip(c, t))}">${c}${codes.includes(c) ? " ✓" : ""}</button>`).join("")}
-        <span class="sdiv"></span><button class="sbtn preset" data-psched-set="5H,6H" ${canCodes ? "" : "disabled"}>5H+6H</button><button class="sbtn preset" data-psched-set="" ${canCodes ? "" : "disabled"}>✕ Clear</button>
+        <span class="sdiv"></span><button class="sbtn preset" data-psched-set="5H,6H" ${canCodes ? "" : "disabled"}>5H+6H</button><button class="sbtn preset" data-psched-set="" ${canCodes ? "" : "disabled"}>✕ Clear</button>${canCodes ? repeatBtn(m, "data-psched-rep") : ""}
         ${admin && !self ? `<span class="note pcl-note">Turning on 5H or 6H lets ${esc(m.name.split(" ")[0])} clock in at that habit time today. CS lets them clock in any time today.</span>` : ""}</div>`}
     </div>`;
   }
   function wireProfileClock(root, m) {
     wireClockButtons(root);
     const self = m.id === me.id;
-    const save = codes => {
+    const save = (codes, repeat) => {
+      if (repeat === undefined && repeatOn(m)) repeat = true;   // already repeating: changes carry on every workday
+      if (repeat !== undefined) m.repeatCodes = repeat ? codes : [];
       if (self) mySched = codes; schedToday[m.id] = codes; renderProfile();
-      run(() => dataCall({ op: "setSchedule", memberId: m.id, codes }), codes.length ? `${m.name.split(" ")[0]}: ${codes.join(" + ")} on for today` : `${m.name.split(" ")[0]}: schedule cleared`);
+      const fn = m.name.split(" ")[0];
+      run(() => dataCall({ op: "setSchedule", memberId: m.id, codes, ...(repeat !== undefined ? { repeat } : {}) }), repeat ? `${fn}: ${codes.length ? codes.join(" + ") : "nothing"} every workday` : repeat === false ? `${fn}: today only` : codes.length ? `${fn}: ${codes.join(" + ")} on for today` : `${fn}: schedule cleared`);
     };
+    root.querySelectorAll("[data-psched-rep]").forEach(b => b.onclick = () => save(schedToday[m.id] || [], !repeatOn(m)));
     const cur = () => new Set(self ? (mySched || []) : (schedToday[m.id] || []));
     root.querySelectorAll("[data-psched]").forEach(b => b.onclick = () => { const c = b.dataset.psched; const s = cur(); s.has(c) ? s.delete(c) : s.add(c); save(SCHED.map(x => x[0]).filter(x => s.has(x))); });
     root.querySelectorAll("[data-psched-set]").forEach(b => b.onclick = () => save(b.dataset.pschedSet ? b.dataset.pschedSet.split(",") : []));

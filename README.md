@@ -257,3 +257,9 @@ Overtime pills show both clocks (e.g. **1 hr · 2–3 PM Manila · 10–11 PM PT
 
 
 Metrics shows **Recomp** before **EV**. Metabase has those two columns the wrong way round, so the app swaps them (Manage dashboards › **Swap EV and Recomp numbers**, on by default; untick once Metabase is fixed). Applies to Cards by task, Overtime and Personal.
+
+
+**Running cycle:** admins can **＋ Add teams** (or Everyone) to an open cycle; people already in it are skipped and their manager becomes the reviewer. Step 1 has **Send to everyone · N** (all who haven’t got their self review) and, when it’s a subset, **My team · N** (people you review).
+
+
+**Habits that stick:** on the Schedule row (My Time, profiles) **🔁 Every day** keeps today’s 5H / 6H / NS (etc.) on every workday until it’s switched off; changing the chips while it’s on updates the coming days. Schedule overview’s day window has **🔁 Repeat every workday from this day on**. Repeating days are filled two weeks ahead (`members.default_codes`, `schedules.auto`); a day changed by hand is never overwritten.
