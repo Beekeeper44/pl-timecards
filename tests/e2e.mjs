@@ -361,7 +361,21 @@ step("9a2. Add teams to a running cycle");
   const [{ n: now }] = await q("select count(*)::int n from reviews where cycle_id=$1", [cy.id]); ok(now === all, "Everyone adds the rest of the team");
   r = await K.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); ok(r.status === 403, "team members can’t add people");
   const [{ n: selfR }] = await q("select count(*)::int n from reviews where cycle_id=$1 and member_id=reviewer_id", [cy.id]);
-  ok(selfR === 0, "nobody is set to review themselves (Alan, at the top, gets no self review)"); }
+  ok(selfR === 0, "nobody is set to review themselves (Alan, at the top, gets no self review)");
+  const [cat] = await q("select id from members where name='Catherine Iligan Asis'");
+  const [mc] = await q("select id from members where name='Marco Clarin'");
+  if (cat && mc) { await q("update reviews set reviewer_id=$1 where cycle_id=$2 and member_id=$3", [alan.id, cy.id, cat.id]); await q("update members set manager_id=$1 where id=$2", [mc.id, cat.id]);
+    await A.get({ week: "" }); const [rv] = await q("select reviewer_id from reviews where cycle_id=$1 and member_id=$2", [cy.id, cat.id]);
+    ok(rv.reviewer_id === mc.id, "Catherine’s reviewer follows her manager (Marco), not Alan"); } }
+
+step("9a3. ★ Title change / Compensation increase / Bonus");
+{ const [rv] = await q("select id from reviews where member_id=$1 order by id limit 1", [khimRow.id]);
+  r = await A.op({ op: "reviewFlag", id: rv.id, flag: "comp", on: true }); await A.op({ op: "reviewFlag", id: rv.id, flag: "bonus", on: true });
+  const [x] = await q("select rec_title, rec_comp, rec_bonus from reviews where id=$1", [rv.id]);
+  ok(r.status === 200 && !x.rec_title && x.rec_comp && x.rec_bonus, "stars saved (Comp increase + Bonus)");
+  const kv = (await K.get({ week: "" })).body.reviews.find(z => z.id === rv.id); ok(kv && kv.recs == null, "the team member never sees their stars");
+  r = await K.op({ op: "reviewFlag", id: rv.id, flag: "title", on: true }); ok(r.status === 403, "team members can’t set stars");
+  const av = (await A.get({ week: "" })).body.reviews.find(z => z.id === rv.id); ok(av.recs.comp === true && av.recs.bonus === true, "admins see the stars"); }
 
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });

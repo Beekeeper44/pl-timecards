@@ -207,6 +207,9 @@ async function migrate() {
     // Reviews: columns added over time (after the reviews and settings tables exist, so a brand-new database works too).
     await sql`alter table reviews add column if not exists self_answers jsonb`;        // [{ q, a }] self review answers
     await sql`alter table reviews add column if not exists mgr_answers jsonb`;         // [{ q, rating }] manager's 1–5 votes
+    await sql`alter table reviews add column if not exists rec_title boolean not null default false`;   // ★ recommended: title change
+    await sql`alter table reviews add column if not exists rec_comp boolean not null default false`;    // ★ compensation increase
+    await sql`alter table reviews add column if not exists rec_bonus boolean not null default false`;   // ★ bonus
     await sql`alter table reviews add column if not exists self_sent_at timestamptz`;  // when the self review was sent (unlocked)
     await sql`alter table reviews add column if not exists extra_info text`;           // "What additional information (if any)…"
     await sql`alter table reviews add column if not exists self_submitted_at timestamptz`;   // set on submit; cleared by Unlock
@@ -245,6 +248,12 @@ export async function fillRepeatingSchedules(force) {
       generate_series((now() at time zone ${PAY_TZ})::date, (now() at time zone ${PAY_TZ})::date + 13, interval '1 day') d
     where m.active and cardinality(m.default_codes) > 0 and extract(isodow from d)::int = any(${days}::int[])
     on conflict (member_id, day) do nothing`;
+}
+// Reviewer follows the person's current manager (in open cycles, until the manager review has been started or sent).
+export async function syncReviewers() {
+  await sql`update reviews r set reviewer_id = m.manager_id, updated_at = now() from members m, review_cycles c
+    where r.member_id = m.id and c.id = r.cycle_id and c.status = 'open' and m.manager_id is not null and m.manager_id <> m.id
+      and r.reviewer_id is distinct from m.manager_id and r.status <> 'shared' and coalesce(jsonb_array_length(r.mgr_answers), 0) = 0`;
 }
 export function sign(payload) {
   const p = b64u(JSON.stringify(payload));

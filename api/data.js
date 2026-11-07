@@ -1,4 +1,4 @@
-import { fillRepeatingSchedules, DEFAULT_OVERTIME_QUESTION, renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
+import { syncReviewers, fillRepeatingSchedules, DEFAULT_OVERTIME_QUESTION, renewSession, earlyOutBy, isPhoneReq, deviceOf, inviteToken, sendInvite, DEFAULT_CARDS_QUESTION, metabaseCardRows, matchMember, metabaseReady, metabaseEmbedUrl, bumpRev, getRev, unsign, cookies, sql, ensureSchema, body, send, fail, currentUser, PAY_TZ, normEmail, emailOk, phoneOk, normPhone, DEPTS, setupMessage, getShift, clockInCheck, leftEarly, DEFAULT_SHIFT, notify, rangeText, MB_HOST } from "./_lib.js";
 
 const dayOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || "");
 // Meeting link: an https web address (Google Meet, Zoom, Teams…); "meet.google.com/abc-defg-hij" gets https:// added.
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     }
     const me = await currentUser(req);
     if (!me) return fail(res, 401, "Signed out");
-    if (req.method === "GET") await fillRepeatingSchedules().catch(() => {});
+    if (req.method === "GET") { await fillRepeatingSchedules().catch(() => {}); await syncReviewers().catch(() => {}); }
     renewSession(req, res, me);   // keep active people signed in
     const admin = me.role === "admin";
     // Late / left early: tell the person's manager (or the admins if they have none), in the app and by email.
@@ -241,6 +241,7 @@ export default async function handler(req, res) {
       const rv$ = sql`select id, cycle_id as "cycleId", member_id as "memberId", reviewer_id as "reviewerId", status, self_text as "selfText", self_rating as "selfRating", self_answers as "selfAnswers",
         round(extract(epoch from self_sent_at) * 1000)::float8 as "selfSentAt", round(extract(epoch from self_submitted_at) * 1000)::float8 as "selfSubmittedAt",
         case when ${admin} or reviewer_id = ${me.id} or status = 'shared' then mgr_answers end as "mgrAnswers",
+        case when ${admin} or reviewer_id = ${me.id} then jsonb_build_object('title', rec_title, 'comp', rec_comp, 'bonus', rec_bonus) end as recs,   -- the person never sees these
         case when ${admin} or reviewer_id = ${me.id} or status = 'shared' then extra_info end as "extra",
         round(extract(epoch from updated_at) * 1000)::float8 as "updatedAt", round(extract(epoch from shared_at) * 1000)::float8 as "sharedAt",
         case when ${admin} or reviewer_id = ${me.id} or status = 'shared' then rating end as rating,
@@ -481,6 +482,19 @@ export default async function handler(req, res) {
         sent++;
       }
       return send(res, 200, { ok: true, sent });
+    }
+    if (b.op === "reviewFlag") {
+      // ★ Title change / Compensation increase / Bonus — reviewer or admin only; never shown to the person
+      const col = { title: "rec_title", comp: "rec_comp", bonus: "rec_bonus" }[b.flag];
+      if (!col) return fail(res, 400, "Unknown star.");
+      const [x] = await sql`select reviewer_id from reviews where id = ${b.id}`;
+      if (!x) return fail(res, 404, "That review is gone.");
+      if (!admin && x.reviewer_id !== me.id) return fail(res, 403, "Only their reviewer or an admin can do that.");
+      const on = !!b.on;
+      if (col === "rec_title") await sql`update reviews set rec_title = ${on} where id = ${b.id}`;
+      else if (col === "rec_comp") await sql`update reviews set rec_comp = ${on} where id = ${b.id}`;
+      else await sql`update reviews set rec_bonus = ${on} where id = ${b.id}`;
+      return send(res, 200, { ok: true });
     }
     if (b.op === "reviewUnsend") {
       // Take back a send: the self review (closes it again, answers so far are kept) or the manager review (back to a draft they can't see).

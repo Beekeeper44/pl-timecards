@@ -326,6 +326,18 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .sbtn.sadm svg{width:14px;height:14px} .hcode.admc{color:var(--blue)} .hcode.admc svg{width:16px;height:16px;color:var(--blue)} .hcode.admc b{color:var(--blue)} .sbtn.sadm small{display:none}
 .prtable tr.prnone td{opacity:.55} .prtable tr.prnone td.tot{color:var(--muted)}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:8px} .chk input{margin-top:3px}
+.rvwho{display:flex;align-items:center;gap:12px;justify-content:space-between} .rvwho .who b{white-space:nowrap} .rectags{flex-wrap:nowrap!important}
+.recstars{display:inline-flex;gap:4px;flex:none}
+.recst{width:28px;height:28px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:#4a5462;font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.recst:hover{border-color:var(--muted)}
+.recst.title.on{color:#60a5fa;border-color:#3b82f6;background:rgba(59,130,246,.15)}
+.recst.comp.on{color:#34d399;border-color:#10b981;background:rgba(16,185,129,.15)}
+.recst.bonus.on{color:#fbbf24;border-color:#f59e0b;background:rgba(245,158,11,.15)}
+.rectags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px} .rectag{font-size:11px;font-weight:700;border-radius:6px;padding:1px 7px}
+.rectag.title{background:rgba(59,130,246,.15);color:#60a5fa} .rectag.comp{background:rgba(16,185,129,.15);color:#34d399} .rectag.bonus{background:rgba(245,158,11,.15);color:#fbbf24}
+.recbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px} .recbar .hl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.recbar .btn{margin-left:auto}
+.fpill.rec-title.on{border-color:#3b82f6;color:#60a5fa} .fpill.rec-comp.on{border-color:#10b981;color:#34d399} .fpill.rec-bonus.on{border-color:#f59e0b;color:#fbbf24}
 .rvscope{margin:4px 0 10px} .rvscope .pill-count{margin-left:6px}
 .rvsendbtns{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
 #caDepts .cnt{opacity:.7;margin-left:4px;font-weight:500}
@@ -796,7 +808,7 @@ tr.fresh td{background:color-mix(in srgb,var(--blue) 7%,transparent)}
 .rvqcols{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:10px}.rvqcols ol{margin:8px 0;padding-left:20px;display:grid;gap:8px}.rvqcols li small{display:block;color:var(--muted)}
 @media (max-width:900px){.rvqcols{grid-template-columns:1fr}}
 .rvtable{table-layout:fixed;width:100%} .rvtable th,.rvtable td{overflow:hidden;text-overflow:ellipsis}
-.rvtable th:nth-child(1){width:23%} .rvtable th:nth-child(2){width:13%} .rvtable th:nth-child(3){width:14%} .rvtable th:nth-child(4){width:13%} .rvtable th:nth-child(5){width:10%} .rvtable th:nth-child(6){width:27%} .rvtable .chip2{white-space:nowrap;max-width:100%}
+.rvtable th:nth-child(1){width:31%} .rvtable th:nth-child(2){width:12%} .rvtable th:nth-child(3){width:13%} .rvtable th:nth-child(4){width:12%} .rvtable th:nth-child(5){width:8%} .rvtable th:nth-child(6){width:24%} .rvtable .chip2{white-space:nowrap;max-width:100%}
 .rvtable td .who{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0} .rvtable td .who b{white-space:normal;line-height:1.25}
 .rvtable td .who small{margin-left:0!important} .rvtable td .who .sw{display:none}
 .rvtable td.acts{text-align:right;white-space:normal} .rvtable td.acts .btn{margin:2px 0 2px 4px;padding:0 10px;height:30px}
@@ -2772,7 +2784,7 @@ dialog::backdrop{background:var(--scrim)}
         deleted: admin ? (D.deleted || []).map(x => ({ ...x })) : [],
         demoOnLogin: !!D.demoOnLogin, swapEvRecomp: D.swapEv !== false, idleSignout: D.idleSignout || 0, reviewQuestions: D.reviewQuestions || null, metricsTeams: { ...(D.metricsTeams || {}) },
         announcements: (D.announcements = (D.announcements || []).filter(x => x.at > Date.now() - 7 * 86400000)).map(x => ({ ...x })),
-        reviews: (D.reviews || []).filter(r => admin || r.memberId === D.meId || r.reviewerId === D.meId).map(r => { const full = admin || r.reviewerId === D.meId || r.status === "shared"; return { ...r, rating: full ? r.rating : null, strengths: full ? r.strengths : null, growth: full ? r.growth : null, goals: full ? r.goals : null }; }),
+        reviews: (D.reviews || []).filter(r => admin || r.memberId === D.meId || r.reviewerId === D.meId).map(r => { const full = admin || r.reviewerId === D.meId || r.status === "shared"; return { ...r, rating: full ? r.rating : null, strengths: full ? r.strengths : null, growth: full ? r.growth : null, goals: full ? r.goals : null, recs: admin || r.reviewerId === D.meId ? { ...(r.recs || {}) } : null }; }),
         updates: (D.pupdates || []).filter(u => admin || u.authorId === D.meId || (u.memberId === D.meId && u.shared) || D.members.find(x => x.id === u.memberId)?.managerId === D.meId).sort((a, b) => b.at - a.at).map(u => ({ ...u })),
         notifications: (D.notifs || []).filter(n => n.memberId === D.meId).sort((a, b) => b.at - a.at).map(n => ({ ...n })),
         timeline: (() => { const q = new URLSearchParams(path.split("?")[1] || ""); const a = +q.get("tlStart"), z = +q.get("tlEnd"); if (!admin || !a) return []; return D.shifts.filter(s => s.in < z && (s.out ?? Date.now()) > a).map(s => ({ ...s, breaks: s.breaks.map(x => ({ ...x })) })); })()
@@ -2898,6 +2910,7 @@ dialog::backdrop{background:var(--scrim)}
       case "cycleAddPeople": { const have = new Set((D.reviews || []).filter(r => r.cycleId === b.id).map(r => r.memberId)); let n = 0;
         D.members.filter(m => m.active !== false && (b.everyone || (b.depts || []).includes(m.dept)) && !have.has(m.id) && (m.managerId || D.meId) !== m.id).forEach(m => { D.reviews.push({ id: did(), cycleId: b.id, memberId: m.id, reviewerId: m.managerId || D.meId, status: "draft" }); n++; });
         return { ok: true, added: n }; }
+      case "reviewFlag": { const r0 = (D.reviews || []).find(x => x.id === b.id); if (!r0) derr(404, "That review is gone."); r0.recs = { ...(r0.recs || {}), [b.flag]: !!b.on }; return { ok: true }; }
       case "reviewUnsend": { const r0 = (D.reviews || []).find(x => x.id === b.id); if (!r0) derr(404, "That review is gone.");
         if (b.part === "self") { if (r0.selfSubmittedAt) derr(400, "They already submitted it. Use Unlock to let them change it."); r0.selfSentAt = null; }
         else if (r0.status === "shared") { r0.status = "draft"; r0.sharedAt = null; } return { ok: true }; }
@@ -4428,6 +4441,10 @@ dialog::backdrop{background:var(--scrim)}
   const selfQs = c => { const y = +((c?.periodEnd || c?.periodStart || today || "").slice(0, 4)) || new Date().getFullYear();
     return SELF_QS.map(([q, hint]) => ({ q: q.replaceAll("{Y}", y).replaceAll("{N}", y + 1), hint: (hint || "").replaceAll("{Y}", y).replaceAll("{N}", y + 1) })); };
   let rvScope = null;   // Reviews cycle table: "mine" (people I review) or "all" (admins)
+  const REC = [["title", "Title change", "Title"], ["comp", "Compensation increase", "Comp increase"], ["bonus", "Bonus", "Bonus"]];   // ★ 1 · 2 · 3
+  const recStars = r => `<span class="recstars">${REC.map(([k, l], i) => { const on = !!(r.recs || {})[k]; return `<button type="button" class="recst ${k} ${on ? "on" : ""}" data-recflag="${r.id}:${k}" aria-pressed="${on}" title="${i + 1} · ${l}${on ? " (on)" : ""}">${on ? "★" : "☆"}</button>`; }).join("")}</span>`;
+  const recTags = r => { const t = REC.filter(([k]) => (r.recs || {})[k]).map(([k, , sh]) => `<span class="rectag ${k}">${sh}</span>`).join(""); return t ? `<span class="rectags">${t}</span>` : ""; };
+  let recFilter = null;   // ★ filter pill on the cycle table
   function renderReviews() {
     const admin = isAdmin(); const lead = isLeadUser();
     $("cycleNew").hidden = !admin; $("updNew").hidden = !lead;
@@ -4455,7 +4472,9 @@ dialog::backdrop{background:var(--scrim)}
       const allRows = reviews.filter(r => r.cycleId === selCycle && (admin || r.reviewerId === me.id) && r.memberId !== me.id && r.memberId !== r.reviewerId).map(r => ({ r, m: memberById(r.memberId) })).filter(x => x.m).sort((a, b) => teamOrder(a.m, b.m));
       const myRows = allRows.filter(x => x.r.reviewerId === me.id);
       const scope = !admin ? "mine" : rvScope || (myRows.length ? "mine" : "all");
-      const rows = scope === "mine" ? myRows : allRows;
+      const rows0 = scope === "mine" ? myRows : allRows;
+      const rows = recFilter ? rows0.filter(x => (x.r.recs || {})[recFilter]) : rows0;
+      const recN = k => rows0.filter(x => (x.r.recs || {})[k]).length;
       const shared = rows.filter(x => x.r.status === "shared").length;
       const unsent = rows.filter(x => !x.r.selfSentAt && !selfDone(x.r));
       const ready = rows.filter(x => x.r.status === "draft" && mgrReady(x.r) && (admin || x.r.reviewerId === me.id));
@@ -4479,9 +4498,11 @@ dialog::backdrop{background:var(--scrim)}
             <div><b>${esc(cyc.name)}</b> <span class="dim">· manager votes 1–5 on each</span><ol>${MGR_QS.map(q => `<li>${esc(q)}</li>`).join("")}<li>${esc(EXTRA_Q)} <small>Typed, optional</small></li></ol><small class="dim">1 Needs improvement · 2 Developing · 3 Meets expectations · 4 Exceeds expectations · 5 Exceptional</small></div></div></details>
           <div class="bar"><span style="width:${rows.length ? shared / rows.length * 100 : 0}%"></span></div>
           ${admin ? `<div class="rvscope seg" role="group" aria-label="Show"><button data-rvscope="mine" aria-pressed="${scope === "mine"}">My reviews to do <span class="pill-count">${myRows.length}</span></button><button data-rvscope="all" aria-pressed="${scope === "all"}">Everyone <span class="pill-count">${allRows.length}</span></button></div>` : ""}
+          <div class="recbar"><span class="hl">★ Recommended</span>${[[null, "Everyone", rows0.length], ...REC.map(([k, l]) => [k, l, recN(k)])].map(([k, l, n]) => `<button class="fpill rec-${k || "all"} ${recFilter === k ? "on" : ""}" data-recfilter="${k || ""}">${k ? "★ " : ""}${l}<span>${n}</span></button>`).join("")}
+            <button class="btn sm" data-recexport title="Everyone with a star, for HR">Export ★ CSV</button></div>
           ${scope === "mine" && !rows.length ? `<div class="empty"><b>No one reports to you in this cycle</b>Switch to Everyone to see the whole team.</div>` : ""}
           <div class="tablewrap flat" style="border:1px solid var(--line);border-radius:10px"><table class="ttable rvtable"><thead><tr><th>Team member</th><th>Reviewer</th><th>${esc(selfName(cyc.name))}</th><th>${esc(cyc.name)}</th><th>Rating</th><th></th></tr></thead><tbody>
-          ${rows.map(({ r, m }) => { const [k, l] = reviewStatus(r); return `<tr class="rvrow" data-rv="${r.id}"><td><span class="who"><b>${esc(m.name)}</b><small style="color:${deptColor(m.dept)}">${esc(m.dept)}</small></span></td>
+          ${rows.map(({ r, m }) => { const [k, l] = reviewStatus(r); return `<tr class="rvrow" data-rv="${r.id}"><td><span class="rvwho"><span class="who"><b>${esc(m.name)}</b><small style="color:${deptColor(m.dept)}">${esc(m.dept)}</small>${recTags(r)}</span>${admin || r.reviewerId === me.id ? recStars(r) : ""}</span></td>
             <td>${esc(nm(r.reviewerId))}</td>
             <td>${selfDone(r) ? `<button class="chip2 done link" data-viewself="${r.id}" title="Read ${esc(m.name.split(" ")[0])}’s ${esc(selfName(cyc.name))}">Submitted · Read</button>` : r.selfSentAt ? `<span class="chip2 a">Sent ${fmtIn(r.selfSentAt, tz, { month: "short", day: "numeric" })}</span>${cyc.status === "open" && (admin || r.reviewerId === me.id) ? ` <button class="linkbtn rvundo" data-unsend="self:${r.id}" title="Take the ${esc(selfName(cyc.name))} back (it closes for ${esc(m.name.split(" ")[0])} until you send it again)">Unsend</button>` : ""}` : '<span class="dim">Not sent</span>'}</td>
             <td><span class="chip2 ${k}">${r.status === "shared" ? "Sent" : l}</span>${r.status === "shared" && cyc.status === "open" && (admin || r.reviewerId === me.id) ? ` <button class="linkbtn rvundo" data-unsend="mgr:${r.id}" title="Take the ${esc(cyc.name)} back to a draft ${esc(m.name.split(" ")[0])} can’t see">Unsend</button>` : ""}</td><td class="rt">${(() => { const a = mgrAvg(r); return a ? `★ ${Number.isInteger(a) ? a : a.toFixed(1)}<small>${RATINGS[Math.round(a)]}</small>` : '<span class="dim">—</span>'; })()}</td>
@@ -4496,6 +4517,18 @@ dialog::backdrop{background:var(--scrim)}
     $("reviewsBody").innerHTML = html;
     const B = $("reviewsBody");
     B.querySelectorAll("[data-cyc]").forEach(b => b.onclick = () => { selCycle = b.dataset.cyc; renderReviews(); });
+    B.querySelectorAll("[data-recflag]").forEach(b => b.onclick = e => { e.stopPropagation();
+      const [id, k] = b.dataset.recflag.split(":"), r0 = reviews.find(x => x.id === id); if (!r0) return;
+      const on = !(r0.recs || {})[k]; r0.recs = { ...(r0.recs || {}), [k]: on }; renderReviews();
+      dataCall({ op: "reviewFlag", id, flag: k, on }).catch(err => { r0.recs[k] = !on; renderReviews(); toast(err.message); }); });
+    B.querySelectorAll("[data-recfilter]").forEach(b => b.onclick = () => { recFilter = b.dataset.recfilter || null; renderReviews(); });
+    B.querySelectorAll("[data-recexport]").forEach(b => b.onclick = () => {
+      const cy = cycles.find(c => c.id === selCycle) || {}, list = reviews.filter(r => r.cycleId === selCycle && r.recs && (r.recs.title || r.recs.comp || r.recs.bonus));
+      if (!list.length) { toast("No one has a star yet"); return; }
+      const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const csv = ["Name,Team,Reviewer,Title change,Compensation increase,Bonus,Rating", ...list.map(r => { const m = memberById(r.memberId) || {}; const a = mgrAvg(r);
+        return [m.name, m.dept, nm(r.reviewerId), r.recs.title ? "Yes" : "", r.recs.comp ? "Yes" : "", r.recs.bonus ? "Yes" : "", a ? (Number.isInteger(a) ? a : a.toFixed(1)) : ""].map(q).join(","); })].join("\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); const a = document.createElement("a"); a.href = url; a.download = `${(cy.name || "review").replace(/\s+/g, "-")}-stars.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); });
     B.querySelectorAll("[data-rvscope]").forEach(b => b.onclick = () => { rvScope = b.dataset.rvscope; renderReviews(); });
     B.querySelectorAll("[data-cycadd]").forEach(b => b.onclick = () => {
       const cid = b.dataset.cycadd, inCyc = new Set(reviews.filter(r => r.cycleId === cid).map(r => r.memberId));
@@ -4513,7 +4546,7 @@ dialog::backdrop{background:var(--scrim)}
       const what = part === "self" ? selfName(cy.name) : cy.name;
       if (!await askConfirm(part === "self" ? `Unsend the ${what} for ${who}?\n\nIt closes for them until you send it again. Anything they’ve typed is kept.` : `Unsend the ${what} for ${who}?\n\nIt goes back to a draft they can’t see. Your votes and comments are kept.`, "Unsend")) return;
       run(() => dataCall({ op: "reviewUnsend", id, part }), `${what} unsent`); });
-    B.querySelectorAll("[data-rv]").forEach(b => b.onclick = e => { if (e.target.closest("[data-sendself],[data-sendrv],[data-viewself],[data-unlockself],[data-unsend]")) return; e.stopPropagation(); openReview(b.dataset.rv); });
+    B.querySelectorAll("[data-rv]").forEach(b => b.onclick = e => { if (e.target.closest("[data-sendself],[data-sendrv],[data-viewself],[data-unlockself],[data-unsend],[data-recflag]")) return; e.stopPropagation(); openReview(b.dataset.rv); });
     B.querySelectorAll("[data-sendself]").forEach(b => b.onclick = async e => { e.stopPropagation();
       const ids = b.dataset.sendself.split(","), r0 = reviews.find(x => x.id === ids[0]), cy = cycles.find(c => c.id === r0?.cycleId) || {};
       const who = ids.length === 1 ? nm(r0.memberId) : `${ids.length} people`;

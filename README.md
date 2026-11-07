@@ -272,3 +272,9 @@ Metrics shows **Recomp** before **EV**. Metabase has those two columns the wrong
 
 
 Review cycles skip anyone who would review themselves (no manager above them, like Alan): they get no self review. Existing ones with nothing written are removed once on deploy.
+
+
+In open review cycles the reviewer always follows the person’s current manager (changed in their profile / Org chart), until the manager review has been started or sent.
+
+
+**★ Recommendations (review cycles):** three stars next to each name — **1 · Title change** (blue), **2 · Compensation increase** (green), **3 · Bonus** (gold). Click to turn on/off; they save straight away and show as colored tags. Only reviewers and admins see or set them (never the team member). Above the table: counts and filter pills per star, and **Export ★ CSV** (everyone with a star, for HR). The table keeps everyone in the cycle until a new cycle starts.
