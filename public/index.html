@@ -326,6 +326,7 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .sbtn.sadm svg{width:14px;height:14px} .hcode.admc{color:var(--blue)} .hcode.admc svg{width:16px;height:16px;color:var(--blue)} .hcode.admc b{color:var(--blue)} .sbtn.sadm small{display:none}
 .prtable tr.prnone td{opacity:.55} .prtable tr.prnone td.tot{color:var(--muted)}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:8px} .chk input{margin-top:3px}
+.rvscope{margin:4px 0 10px} .rvscope .pill-count{margin-left:6px}
 .rvsendbtns{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
 #caDepts .cnt{opacity:.7;margin-left:4px;font-weight:500}
 .sbtn.srep{white-space:nowrap} .sbtn.srep.sel{color:var(--green)!important;border-color:color-mix(in srgb,var(--green) 55%,var(--line2))!important;background:color-mix(in srgb,var(--green) 12%,transparent)!important}
@@ -2851,7 +2852,7 @@ dialog::backdrop{background:var(--scrim)}
       case "annPost": { D.announcements.unshift({ id: did(), authorId: D.meId, body: b.body || "", image: b.image || null, at: Date.now() }); D.members.filter(m => m.id !== D.meId).forEach(m => D.notifs.push({ id: did(), memberId: m.id, kind: "announce", title: `${meM.name} posted an announcement`, body: (b.body || "").slice(0, 200), link: "#announcements", read: false, at: Date.now() })); return { ok: true }; }
       case "annDelete": { D.announcements = D.announcements.filter(a => a.id !== b.id); return { ok: true }; }
       case "cycleCreate": { const cy = { id: did(), name: b.name, kind: b.kind || "Performance", reviewDue: b.reviewDue || null, periodStart: b.periodStart, periodEnd: b.periodEnd, due: b.due, status: "open" }; D.cycles.unshift(cy);
-        D.members.filter(m => m.active && (!b.depts?.length || b.depts.includes(m.dept))).forEach(m => D.reviews.push({ id: did(), cycleId: cy.id, memberId: m.id, reviewerId: m.managerId || D.meId, status: "not_started", selfText: "", selfRating: null, rating: null, strengths: "", growth: "", goals: "", updatedAt: Date.now(), sharedAt: null })); return { ok: true }; }
+        D.members.filter(m => m.active && (!b.depts?.length || b.depts.includes(m.dept)) && (m.managerId || D.meId) !== m.id).forEach(m => D.reviews.push({ id: did(), cycleId: cy.id, memberId: m.id, reviewerId: m.managerId || D.meId, status: "not_started", selfText: "", selfRating: null, rating: null, strengths: "", growth: "", goals: "", updatedAt: Date.now(), sharedAt: null })); return { ok: true }; }
       case "cycleDates": { const c = D.cycles.find(x => x.id === b.id); if (b.due !== undefined) c.due = b.due || null; if (b.reviewDue !== undefined) c.reviewDue = b.reviewDue || null; return { ok: true }; }
       case "cycleStatus": { D.cycles.find(c => c.id === b.id).status = b.status; return { ok: true }; }
       case "toDecide": { const r = D.timeOff.find(x => x.id === b.id); if (r.status !== "pending") derr(409, "Already decided."); r.status = b.status; r.decisionNote = b.note || ""; r.decidedAt = Date.now(); r.decidedBy = D.meId;
@@ -2895,7 +2896,7 @@ dialog::backdrop{background:var(--scrim)}
       case "inviteLinks": return { ok: true, links: (b.ids || []).map(id => D.members.find(x => x.id === id)).filter(Boolean).map(m => { if (!m.hasPin && !m.invitedAt) m.invitedAt = Date.now(); return { id: m.id, name: m.name, email: m.email, signedUp: !!m.hasPin, link: `https://pl-time-cards.vercel.app/?join=demo-${m.id.slice(0, 8)}` }; }) };
       case "adminAnyTime": { const m0 = D.members.find(x => x.id === b.memberId); if (!m0 || m0.role !== "admin") derr(400, "Only admins have this switch."); m0.anytimeOff = !b.on; return { ok: true }; }
       case "cycleAddPeople": { const have = new Set((D.reviews || []).filter(r => r.cycleId === b.id).map(r => r.memberId)); let n = 0;
-        D.members.filter(m => m.active !== false && (b.everyone || (b.depts || []).includes(m.dept)) && !have.has(m.id)).forEach(m => { D.reviews.push({ id: did(), cycleId: b.id, memberId: m.id, reviewerId: m.managerId || D.meId, status: "draft" }); n++; });
+        D.members.filter(m => m.active !== false && (b.everyone || (b.depts || []).includes(m.dept)) && !have.has(m.id) && (m.managerId || D.meId) !== m.id).forEach(m => { D.reviews.push({ id: did(), cycleId: b.id, memberId: m.id, reviewerId: m.managerId || D.meId, status: "draft" }); n++; });
         return { ok: true, added: n }; }
       case "reviewUnsend": { const r0 = (D.reviews || []).find(x => x.id === b.id); if (!r0) derr(404, "That review is gone.");
         if (b.part === "self") { if (r0.selfSubmittedAt) derr(400, "They already submitted it. Use Unlock to let them change it."); r0.selfSentAt = null; }
@@ -4425,28 +4426,36 @@ dialog::backdrop{background:var(--scrim)}
   const mgrAvg = r => { const v = (r.mgrAnswers || []).map(x => x.rating).filter(Boolean); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : r.rating || null; };
   const ratingHtml = r => { const a = mgrAvg(r); return a ? `★ ${Number.isInteger(a) ? a : a.toFixed(1)} <span class="dim">${RATINGS[Math.round(a)]}</span>` : '<span class="dim">—</span>'; };
   const selfQs = c => { const y = +((c?.periodEnd || c?.periodStart || today || "").slice(0, 4)) || new Date().getFullYear();
-    return SELF_QS.map(([q, hint]) => ({ q: q.replace("{Y}", y).replace("{N}", y + 1), hint })); };
+    return SELF_QS.map(([q, hint]) => ({ q: q.replaceAll("{Y}", y).replaceAll("{N}", y + 1), hint: (hint || "").replaceAll("{Y}", y).replaceAll("{N}", y + 1) })); };
+  let rvScope = null;   // Reviews cycle table: "mine" (people I review) or "all" (admins)
   function renderReviews() {
     const admin = isAdmin(); const lead = isLeadUser();
     $("cycleNew").hidden = !admin; $("updNew").hidden = !lead;
-    const mine = reviews.filter(r => r.memberId === me.id);
+    const mine = reviews.filter(r => r.memberId === me.id && r.reviewerId !== me.id);   // nobody reviews themselves
     const toWrite = reviews.filter(r => r.reviewerId === me.id && r.memberId !== me.id);
     if (!selCycle || !cycles.some(c => c.id === selCycle)) selCycle = cycles[0]?.id || null;
     let html = "";
     // my own reviews (everyone)
-    if (mine.length || !lead) html += `<div class="section-h">My reviews</div>${mine.length ? `<div class="tablewrap flat rvmine"><table class="ttable"><thead><tr><th>Review</th><th>Type</th><th>Status</th><th>Due</th></tr></thead><tbody>
+    if (mine.length || !lead) html += `<div class="section-h">My reviews</div>${mine.length ? `<div class="tablewrap flat rvmine"><table class="ttable"><thead><tr><th>Review</th><th>Type</th><th>Status</th><th>Due</th><th></th></tr></thead><tbody>
         ${mine.map(r => { const c = cycles.find(x => x.id === r.cycleId) || {}; const due = c.due ? fmtDayKey(c.due, { month: "short", day: "numeric" }) : "—";
           const selfSt = selfDone(r) ? '<span class="chip2 done">Submitted</span>' : c.status !== "open" ? '<span class="chip2">Not submitted</span>' : r.selfSentAt ? '<span class="chip2 a">To do</span>' : '<span class="chip2">Not open yet</span>';
           const mgrSt = r.status === "shared" ? `<span class="chip2 done">Received · ${ratingHtml(r).replace(/<[^>]+>/g, "")}</span>` : `<span class="chip2">From ${esc(nm(r.reviewerId).split(" ")[0])}, not sent yet</span>`;
           const revDue = c.reviewDue ? fmtDayKey(c.reviewDue, { month: "short", day: "numeric" }) : "—";
-          return `<tr class="rvrow" data-myrv="${r.id}"><td><b>${esc(c.name || "Review")}</b></td><td>${esc(kindOf(c))}</td><td>${mgrSt}</td><td>${r.status === "shared" && r.sharedAt ? `<span class="dim">Sent ${fmtIn(r.sharedAt, tz, { month: "short", day: "numeric" })}</span>` : revDue}</td></tr>
-            <tr class="rvrow" data-myrv="${r.id}"><td><b>${esc(selfName(c.name))}</b></td><td>${esc(kindOf(c))}</td><td>${selfSt}</td><td>${due}</td></tr>`; }).join("")}
+          // the manager's review only shows here once they've sent it
+          const started = (r.selfAnswers || []).some(x => (x.a || "").trim());
+          const selfBtn = selfDone(r) ? `<button class="btn sm" data-myself="${r.id}">View</button>` : r.selfSentAt && c.status === "open" ? `<button class="btn sm primary" data-myself="${r.id}">${started ? "Continue self review" : "Start self review"}</button>` : "";
+          return (r.status === "shared" ? `<tr class="rvrow" data-myrv="${r.id}"><td><b>${esc(c.name || "Review")}</b></td><td>${esc(kindOf(c))}</td><td>${mgrSt}</td><td>${r.sharedAt ? `<span class="dim">Sent ${fmtIn(r.sharedAt, tz, { month: "short", day: "numeric" })}</span>` : revDue}</td><td class="acts"><button class="btn sm" data-myrv-btn="${r.id}">View review</button></td></tr>` : "")
+            + `<tr class="rvrow" data-myrv="${r.id}"><td><b>${esc(selfName(c.name))}</b></td><td>${esc(kindOf(c))}</td><td>${selfSt}</td><td>${due}</td><td class="acts">${selfBtn}</td></tr>`; }).join("")}
         </tbody></table></div>`
       : `<div class="empty"><b>No reviews yet</b>When a review cycle starts, it shows up here.</div>`}`;
     // cycles + team reviews (admins and leads)
     if (lead) {
       const cyc = cycles.find(c => c.id === selCycle);
-      const rows = reviews.filter(r => r.cycleId === selCycle && (admin || r.reviewerId === me.id) && r.memberId !== me.id).map(r => ({ r, m: memberById(r.memberId) })).filter(x => x.m).sort((a, b) => teamOrder(a.m, b.m));
+      // My reviews to do (people who report to me) vs Everyone (admins)
+      const allRows = reviews.filter(r => r.cycleId === selCycle && (admin || r.reviewerId === me.id) && r.memberId !== me.id && r.memberId !== r.reviewerId).map(r => ({ r, m: memberById(r.memberId) })).filter(x => x.m).sort((a, b) => teamOrder(a.m, b.m));
+      const myRows = allRows.filter(x => x.r.reviewerId === me.id);
+      const scope = !admin ? "mine" : rvScope || (myRows.length ? "mine" : "all");
+      const rows = scope === "mine" ? myRows : allRows;
       const shared = rows.filter(x => x.r.status === "shared").length;
       const unsent = rows.filter(x => !x.r.selfSentAt && !selfDone(x.r));
       const ready = rows.filter(x => x.r.status === "draft" && mgrReady(x.r) && (admin || x.r.reviewerId === me.id));
@@ -4460,7 +4469,7 @@ dialog::backdrop{background:var(--scrim)}
             <div class="rvhbtns">${admin && cyc.status === "open" ? `<button class="btn sm" data-cycadd="${cyc.id}">＋ Add teams</button>` : ""}${admin ? `<button class="btn sm" data-cycstat="${cyc.id}" data-to="${cyc.status === "open" ? "closed" : "open"}">${cyc.status === "open" ? "Close cycle" : "Reopen cycle"}</button>` : ""}</div></div>
           <div class="rvsteps">
             <div class="rvstep ${nSent === rows.length ? "ok" : ""}"><i>1</i><div><b>Send ${esc(selfName(cyc.name))}</b><small>${nSent} of ${rows.length} sent · unlocks it for them</small></div>${cyc.status === "open" && unsent.length ? (() => { const mine = unsent.filter(x => x.r.reviewerId === me.id);
-              return `<span class="rvsendbtns">${mine.length && mine.length < unsent.length ? `<button class="btn sm" data-sendself="${mine.map(x => x.r.id).join(",")}" title="People you review">My team · ${mine.length}</button>` : ""}<button class="btn sm primary" data-sendself="${unsent.map(x => x.r.id).join(",")}" title="Everyone in this cycle who hasn’t got it yet">Send to everyone · ${unsent.length}</button></span>`; })() : ""}</div>
+              return `<span class="rvsendbtns">${mine.length && mine.length < unsent.length ? `<button class="btn sm" data-sendself="${mine.map(x => x.r.id).join(",")}" title="People you review">My team · ${mine.length}</button>` : ""}<button class="btn sm primary" data-sendself="${unsent.map(x => x.r.id).join(",")}" title="${scope === "mine" ? "People you review who haven’t got it yet" : "Everyone in this cycle who hasn’t got it yet"}">${scope === "mine" ? "Send to my team" : "Send to everyone"} · ${unsent.length}</button></span>`; })() : ""}</div>
             <div class="rvstep ${nSub === rows.length ? "ok" : ""}"><i>2</i><div><b>Team writes it</b><small>${nSub} of ${rows.length} submitted${cyc.due ? ` · due ${fmtDayKey(cyc.due, { month: "short", day: "numeric" })}` : ""}</small></div></div>
             <div class="rvstep ${nWritten === rows.length ? "ok" : ""}"><i>3</i><div><b>Write ${esc(cyc.name)}s</b><small>${nWritten} of ${rows.length} started · ${ready.length + shared} with all votes</small></div></div>
             <div class="rvstep ${shared === rows.length ? "ok" : ""}"><i>4</i><div><b>Send ${esc(cyc.name)}</b><small>${shared} of ${rows.length} sent${cyc.reviewDue ? ` · due ${fmtDayKey(cyc.reviewDue, { month: "short", day: "numeric" })}` : ""}</small></div>${ready.length ? `<button class="btn sm primary" data-sendmany="${ready.map(x => x.r.id).join(",")}">Send ${ready.length} finished</button>` : ""}</div>
@@ -4469,6 +4478,8 @@ dialog::backdrop{background:var(--scrim)}
             <div class="rvqcols"><div><b>${esc(selfName(cyc.name))}</b> <span class="dim">· team member writes, with examples</span><ol>${selfQs(cyc).map(x => `<li>${esc(x.q)}<small>${esc(x.hint)}</small></li>`).join("")}</ol></div>
             <div><b>${esc(cyc.name)}</b> <span class="dim">· manager votes 1–5 on each</span><ol>${MGR_QS.map(q => `<li>${esc(q)}</li>`).join("")}<li>${esc(EXTRA_Q)} <small>Typed, optional</small></li></ol><small class="dim">1 Needs improvement · 2 Developing · 3 Meets expectations · 4 Exceeds expectations · 5 Exceptional</small></div></div></details>
           <div class="bar"><span style="width:${rows.length ? shared / rows.length * 100 : 0}%"></span></div>
+          ${admin ? `<div class="rvscope seg" role="group" aria-label="Show"><button data-rvscope="mine" aria-pressed="${scope === "mine"}">My reviews to do <span class="pill-count">${myRows.length}</span></button><button data-rvscope="all" aria-pressed="${scope === "all"}">Everyone <span class="pill-count">${allRows.length}</span></button></div>` : ""}
+          ${scope === "mine" && !rows.length ? `<div class="empty"><b>No one reports to you in this cycle</b>Switch to Everyone to see the whole team.</div>` : ""}
           <div class="tablewrap flat" style="border:1px solid var(--line);border-radius:10px"><table class="ttable rvtable"><thead><tr><th>Team member</th><th>Reviewer</th><th>${esc(selfName(cyc.name))}</th><th>${esc(cyc.name)}</th><th>Rating</th><th></th></tr></thead><tbody>
           ${rows.map(({ r, m }) => { const [k, l] = reviewStatus(r); return `<tr class="rvrow" data-rv="${r.id}"><td><span class="who"><b>${esc(m.name)}</b><small style="color:${deptColor(m.dept)}">${esc(m.dept)}</small></span></td>
             <td>${esc(nm(r.reviewerId))}</td>
@@ -4485,6 +4496,7 @@ dialog::backdrop{background:var(--scrim)}
     $("reviewsBody").innerHTML = html;
     const B = $("reviewsBody");
     B.querySelectorAll("[data-cyc]").forEach(b => b.onclick = () => { selCycle = b.dataset.cyc; renderReviews(); });
+    B.querySelectorAll("[data-rvscope]").forEach(b => b.onclick = () => { rvScope = b.dataset.rvscope; renderReviews(); });
     B.querySelectorAll("[data-cycadd]").forEach(b => b.onclick = () => {
       const cid = b.dataset.cycadd, inCyc = new Set(reviews.filter(r => r.cycleId === cid).map(r => r.memberId));
       const left = d => activeMembers().filter(m => (d === "*" || m.dept === d) && !inCyc.has(m.id)).length;
@@ -4520,7 +4532,8 @@ dialog::backdrop{background:var(--scrim)}
       if ((r.mgrAnswers || []).filter(x => x.rating).length < MGR_QS.length) { toast("Vote 1–5 on every statement first"); openReview(r.id); return; }
       if (!await askConfirm(`Send this review to ${nm(r.memberId)}? They’ll be notified and can read it.`, "Send")) return;
       run(() => dataCall({ op: "reviewSave", id: r.id, answers: r.mgrAnswers, extra: r.extra, strengths: r.strengths, growth: r.growth, goals: r.goals, share: true }), `Review sent to ${nm(r.memberId).split(" ")[0]}`); });
-    B.querySelectorAll("[data-myrv]").forEach(b => b.onclick = () => openReview(b.dataset.myrv));
+    B.querySelectorAll("[data-myrv]").forEach(b => b.onclick = e => { if (e.target.closest("[data-myself],[data-myrv-btn]")) return; openReview(b.dataset.myrv); });
+    B.querySelectorAll("[data-myself],[data-myrv-btn]").forEach(b => b.onclick = e => { e.stopPropagation(); openReview(b.dataset.myself || b.dataset.myrvBtn, b.dataset.myself ? { self: true } : {}); });
     B.querySelectorAll("[data-cycstat]").forEach(b => b.onclick = e => { e.stopPropagation(); run(() => dataCall({ op: "cycleStatus", id: b.dataset.cycstat, status: b.dataset.to }), b.dataset.to === "closed" ? "Cycle closed" : "Cycle reopened"); });
     wireUpdates(B);
   }
@@ -4623,7 +4636,7 @@ dialog::backdrop{background:var(--scrim)}
 `;
     const selfHtml = `      <div class="mtsec"><div class="mth"><b>${esc(selfName(c.name))}</b>${selfDone(r) && r.selfSubmittedAt ? `<span class="chip2 done" style="margin-left:8px">Submitted ${fmtIn(r.selfSubmittedAt, tz, { month: "short", day: "numeric" })}</span>` : ""}<span class="dim">${asSelf ? "Only you, your reviewer and admins see this" : `Written by ${esc(m?.name.split(" ")[0] || "")}`}</span></div>
         ${asSelf && !r.selfSentAt && !selfDone(r) ? `<div class="rvlock">🔒 Not open yet. Your manager sends your ${esc(selfName(c.name))} when it’s time, and you’ll get an email.</div>`
-          : asSelf && selfOpen(r, c) ? `<div class="sqs">${(r.selfAnswers?.length ? r.selfAnswers.map((x, i) => ({ q: x.q, hint: selfQs(c)[i]?.hint || "Give examples.", a: x.a })) : selfQs(c)).map((x, i) => `<label class="sq"><b>${i + 1}. ${esc(x.q)}</b><small>${esc(x.hint)}</small><textarea class="field ta" data-sq="${i}" data-q="${esc(x.q)}" rows="4" maxlength="4000" placeholder="Your answer, with examples">${esc(x.a || "")}</textarea></label>`).join("")}</div>
+          : asSelf && selfOpen(r, c) ? `<div class="sqs">${((r.selfAnswers || []).some(x => (x.a || "").trim()) ? r.selfAnswers.map((x, i) => ({ q: x.q, hint: selfQs(c)[i]?.hint || "Give examples.", a: x.a })) : selfQs(c)).map((x, i) => `<label class="sq"><b>${i + 1}. ${esc(x.q)}</b><small>${esc(x.hint)}</small><textarea class="field ta" data-sq="${i}" data-q="${esc(x.q)}" rows="4" maxlength="4000" placeholder="Your answer, with examples">${esc(x.a || "")}</textarea></label>`).join("")}</div>
             <div class="sqrate"><div><b>Overall, how would you rate your year?</b> <span class="dim">(optional)</span></div>${pills("selfRating", r.selfRating, false)}</div>`
           : r.selfAnswers?.length ? `<div class="sqs">${r.selfAnswers.map((x, i) => `<div class="sq"><b>${i + 1}. ${esc(x.q)}</b><div class="ro">${esc(x.a).replace(/\n/g, "<br>")}</div></div>`).join("")}</div>${r.selfRating ? `<div class="dim" style="margin-top:8px">Self-rating: ★ ${r.selfRating} · ${RATINGS[r.selfRating]}</div>` : ""}`
           : r.selfText ? `${r.selfRating ? `<div class="dim" style="margin-bottom:4px">Self-rating: ★ ${r.selfRating} · ${RATINGS[r.selfRating]}</div>` : ""}<div class="ro">${esc(r.selfText).replace(/\n/g, "<br>")}</div>` : `<div class="dim">Not written yet.</div>`}</div>

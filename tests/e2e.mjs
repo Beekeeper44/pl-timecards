@@ -357,9 +357,11 @@ step("9a2. Add teams to a running cycle");
   const [{ n: after }] = await q("select count(*)::int n from reviews where cycle_id=$1", [cy.id]);
   const [{ n: data }] = await q("select count(*)::int n from members where active and dept='Data'");
   ok(r.status === 200 && after === before + data && r.body.added === data, `Add teams adds the Data team and skips people already in it (+${r.body.added})`);
-  r = await A.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); const [{ n: all }] = await q("select count(*)::int n from members where active");
+  r = await A.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); const [{ n: all }] = await q("select count(*)::int n from members where active and coalesce(manager_id, $1) <> id", [alan.id]);
   const [{ n: now }] = await q("select count(*)::int n from reviews where cycle_id=$1", [cy.id]); ok(now === all, "Everyone adds the rest of the team");
-  r = await K.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); ok(r.status === 403, "team members can’t add people"); }
+  r = await K.op({ op: "cycleAddPeople", id: cy.id, everyone: true }); ok(r.status === 403, "team members can’t add people");
+  const [{ n: selfR }] = await q("select count(*)::int n from reviews where cycle_id=$1 and member_id=reviewer_id", [cy.id]);
+  ok(selfR === 0, "nobody is set to review themselves (Alan, at the top, gets no self review)"); }
 
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });

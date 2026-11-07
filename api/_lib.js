@@ -193,6 +193,10 @@ async function migrate() {
     // One-time: undo the earlier mistaken switch of Cards by task to 46762 (that question is the Overtime board).
     const [q46] = await sql`insert into settings (key, value) values ('cards_q46531_back_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (q46) await sql`update settings set value = jsonb_set(value, '{cardId}', '46531'::jsonb) where key = 'production' and (value->>'cardId') = '46762'`;
+    // One-time: remove reviews where the person would review themselves (nobody above them), if nothing was written yet.
+    const [selfRv] = await sql`insert into settings (key, value) values ('no_self_reviewer_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (selfRv) await sql`delete from reviews where member_id = reviewer_id and coalesce(jsonb_array_length(self_answers), 0) = 0
+      and coalesce(jsonb_array_length(mgr_answers), 0) = 0 and status <> 'shared'`.catch(() => {});
     // One-time: Princess Cabalar (Metabase: Princess / Cess Cordova) moved from Data to Grading, reporting to Ehm Crucillo.
     const [pc] = await sql`insert into settings (key, value) values ('princess_grading_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (pc) await sql`update members set dept = 'Grading', job_title = 'Grading Annotator 1',

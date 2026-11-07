@@ -263,3 +263,12 @@ Metrics shows **Recomp** before **EV**. Metabase has those two columns the wrong
 
 
 **Habits that stick:** on the Schedule row (My Time, profiles) **🔁 Every day** keeps today’s 5H / 6H / NS (etc.) on every workday until it’s switched off; changing the chips while it’s on updates the coming days. Schedule overview’s day window has **🔁 Repeat every workday from this day on**. Repeating days are filled two weeks ahead (`members.default_codes`, `schedules.auto`); a day changed by hand is never overwritten.
+
+
+**My reviews:** each self review row has a green **Start self review** button (then **Continue self review**, then **View**). The manager’s review only appears in My reviews once it’s been sent (**View review**). Everyone’s self review uses the current questions from Reviews › Questions until they start answering.
+
+
+**Review cycle table:** admins get **My reviews to do · N** (only people who report to them; the default when they have any) and **Everyone · N**. The steps, counts and send buttons follow the pill you pick. Leads who aren’t admins always see just their own reports.
+
+
+Review cycles skip anyone who would review themselves (no manager above them, like Alan): they get no self review. Existing ones with nothing written are removed once on deploy.

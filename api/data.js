@@ -802,7 +802,8 @@ export default async function handler(req, res) {
         // One review per active person in the chosen teams; the reviewer is their manager (or the admin creating the cycle).
         const ins = await sql`insert into reviews (cycle_id, member_id, reviewer_id)
           select ${cy.id}, m.id, coalesce(m.manager_id, ${me.id}) from members m
-          where m.active and (${depts.length === 0} or m.dept = any(${depts}::text[])) returning member_id`;
+          where m.active and (${depts.length === 0} or m.dept = any(${depts}::text[]))
+            and coalesce(m.manager_id, ${me.id}) <> m.id returning member_id`;   // nobody reviews themselves (e.g. the top of the org chart)
         // Nobody is notified yet: admins/managers send each person their self review with "Send self review".
         return send(res, 200, { ok: true, created: ins.length });
       }
@@ -813,7 +814,7 @@ export default async function handler(req, res) {
         if (!all && !depts.length) return fail(res, 400, "Pick at least one team.");
         const ins = await sql`insert into reviews (cycle_id, member_id, reviewer_id)
           select ${b.id}, m.id, coalesce(m.manager_id, ${me.id}) from members m
-          where m.active and (${all} or m.dept = any(${depts}::text[]))
+          where m.active and (${all} or m.dept = any(${depts}::text[])) and coalesce(m.manager_id, ${me.id}) <> m.id
             and not exists (select 1 from reviews r where r.cycle_id = ${b.id} and r.member_id = m.id) returning member_id`;
         return send(res, 200, { ok: true, added: ins.length });
       }
