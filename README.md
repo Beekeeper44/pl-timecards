@@ -278,3 +278,83 @@ In open review cycles the reviewer always follows the person’s current manager
 
 
 **★ Recommendations (review cycles):** three stars next to each name — **1 · Title change** (blue), **2 · Compensation increase** (green), **3 · Bonus** (gold). Click to turn on/off; they save straight away and show as colored tags. Only reviewers and admins see or set them (never the team member). Above the table: counts and filter pills per star, and **Export ★ CSV** (everyone with a star, for HR). The table keeps everyone in the cycle until a new cycle starts.
+
+
+Cycle table columns sort: click **Team member, Reviewer, Self review, Year End Review** or **Rating** (again to flip). Rating, Self review and Year End Review sort highest / furthest along first.
+
+
+## Team Leveling (its own sidebar button, access list only)
+Only the people on its access list see the **Team Leveling** button and can open it — by default **Alan and Karl**. Change it with **🔒 Who can see this** on the page (you can’t remove yourself). Everyone with access sees and can edit the whole team. Tabs: **Roster** (stats, search / team / rank / change filters, sortable columns, click a row to edit name, team, rank, title, reports to, level, tier, current / new pay, bonus and notes; *Use ladder title*, *Set new pay to band midpoint*, *Promote half a level*), **Job ladder** (title per rank per team, editable by admins), **Pay bands** (range per level and tier, editable by admins) and **Summary** (payroll now vs new, raises, bonuses, by level and team). Admin tools: New pay → current, Clear new pay, Clear bonuses, **Import CSV** (the old Team Leveling app’s Export CSV), Export CSV.
+
+It’s the source of truth: team, title, level (Level = 1 + rung/2, so Level 5 = rung 8 and Level 7 = rung 12; levels run 1 to 7 in half steps), tier and manager are the person’s real fields, so a change shows straight away on the org chart, their profile, Talent and reviews. Pay, bonus, rank and notes stay inside Team Leveling (`members.pay_current / pay_new / bonus / rank / level_notes`).
+
+
+**Rank everywhere:** each person’s rank from Team Leveling shows under their name (e.g. “Review · Manager”, “Data · Annotator 3”; CS shows CSR). Within every team, lists sort by rank — Manager, Lead, Senior, Junior, Annotator 5 → 1 — then level, then name. People without a rank sort by level (Alan stays on top).
+
+
+Org chart: a team card (“Team · lead to be decided”) holds everyone in that team under the manager, at any level (Level 1 people were left out before). In **Edit** mode you can drag a person onto a team card: they move into that team and report to that card’s manager (asks first; Undo works).
+
+
+**1st / 2nd chair (org chart):** any leader (Manager, Lead, Senior… whatever you choose) is the **1st chair**; their backup is the **2nd chair**. In **Edit** mode each leader’s card (people with reports, or a Lead / Manager / Senior rank) has a “＋ 2nd chair” slot underneath: drag a person onto it (they then report to that leader; × removes it). A leader of several teams gets **one 2nd chair per team** — e.g. Ehm has a Review slot and a Grading slot, colored by team (Managers get one general slot). Dropping someone from another team moves them into that team. Cards show **1st chair** / **2nd chair** badges and the 2nd chair’s name under the leader; the 2nd chair is listed first among that leader’s people. Saved in `members.chair2_of`.
+
+Spelling: “Senor / Seinor / Snior” in titles and ranks is corrected to **Senior** (once on deploy, and on every save or import).
+
+
+Org chart team blocks: Leads, Seniors, Juniors and 2nd chairs sit right under their manager; the block below lists Annotators in rank order (Annotator 5 … 2 above Annotator 1). Before, Level 1 people were pulled out on top by mistake.
+
+
+**Chair badges by hand:** in Org chart › Edit, tap a card and pick **Chair badge: None · 1st chair · 2nd chair**. 1st chair works for anyone (e.g. the go-to person in a team with no lead); 2nd chair makes them 2nd chair to the manager they report to, for their team. Both show as a small badge in the card’s top-right corner (**1st** blue, **2nd** orange) and sit outside the team box.
+
+
+Alan isn’t listed in Team Leveling (he’s above the leveling plan).
+
+
+Team Leveling lists every active team member straight from the team list, so anyone added in PL Time Cards (Add team member, Import the PL team) shows up there with their team, title, level and tier; set their rank and pay in Team Leveling.
+
+
+Team Leveling › **Job ladder** shows a **suggested pay** for every rank (its level’s band, Prime low → Elite high; hover for each tier). Ranks map to levels: Annotator 1–5 → L1–L3, Junior → L3.5, Senior → L4, Lead → L4.5, Manager → L5. **Pay bands** lists the **titles that fit** each level (every team’s title for that rank); Levels 5.5–7 are above the ladder.
+
+
+**Payroll (Nov 2026):** current pay for all 124 people on the payroll list is set once on deploy (`payroll_2026_11_v1`, matched by work email; level, tier and new pay untouched). Total ₱2,216,000/month. Agnes Arcangel isn’t on that list and keeps her pay as is.
+
+
+**Fit to pay:** Team Leveling’s roster has a green **Fit to pay · N** button for the people shown who are outside their band: it sets level and tier from their pay (the lowest level whose band reaches it), the matching rank (Leads and Managers keep theirs) and the job-ladder title, after a confirm that lists every change. CS was fitted once on deploy (`cs_fit_to_pay_v1`).
+
+
+Org chart › Edit: every card has a **＋ 1st** corner button (click to make them 1st chair; click **1st ×** to remove). The 2nd-chair slot under a leader shows when their branch is open; when it’s closed, hover the **1st** badge to see their 2nd chair. Data is set up with Peds as 1st chair and Ramy as Data 2nd chair (once on deploy).
+
+
+Profiles show a **1st chair** / **2nd chair · Team** badge next to the name only when the person holds one. Admins get a small **＋ Chair** button there (Chair… once set) that opens a picker: None · 1st chair · 2nd chair (to the person they report to, for their team).
+
+
+**Chair medals:** 1st (gold), 2nd (silver) and 3rd (bronze) chairs show as medal badges — top-right of org chart cards, and next to the name on profiles with the words (e.g. “3rd chair · Data”). Admins pick None · 1st · 2nd · 3rd from the profile’s **＋ Chair** popup or the org chart’s Edit menu. 2nd and 3rd chairs are per leader per team (`members.chair3_of / chair3_dept`).
+
+
+A small gold/silver/bronze number coin shows next to chair holders’ names in Team overview (Live day and Team breakdown), Schedule overview, Habit Hours and Hours summary.
+
+
+Org chart: when a leader has people from more than one team (e.g. Ehm: Review and Grading), each team gets its own labelled box (“Review 9”, “Grading 21”). A team’s 1st chair (e.g. Abe for Grading) sits first in their team’s box with the gold medal; the leader (Ehm) stays above both. Abe is set as Grading 1st chair once on deploy.
+
+
+The “2nd · name” label under a leader’s card only appears in Edit mode (as the drop slot); outside Edit the 2nd chair is shown by the silver medal on their own card.
+
+
+**Chair positions:** under every 1st chair (branch open) the org chart shows their **2nd** and **3rd** positions — silver/bronze coin with the person’s first name, or **Open** when nobody holds it (one pair per team for leaders of several teams). In Edit mode these are the drop targets: drag a person onto 2nd or 3rd; × clears it.
+
+
+Chair badges use the PL 1st / 2nd / 3rd badge art (gold, silver, bronze), embedded in the page (copies in `public/badges/`). Lists use small numbered coins in the same colors so they stay readable at small size.
+
+
+Under each name in Team overview, Schedule overview, Habit Hours and Hours summary: their job title (e.g. “Data Manager”, “Review Annotator 3”), or team · rank when no title is set.
+
+
+**PL badges (full set):** 1st / 2nd / 3rd chair badges for each team (Data, Grading, Review, Analysts, Recomp, Items, Community, CS), plus special tiers **Director** (title contains Director), **Manager** (rank or title Manager) and **EOM** (Employee of the Month). Profiles show every badge a person holds; org chart cards show their chair badge (or Director/Manager) in the corner and EOM beside it; lists show a small coin and ⭐ for EOM. Admins set chairs and Employee of the Month from the profile’s **＋ Chair** popup (EOM is one person at a time, saved in `settings.eom`). Teams without their own art (Managers) use the Data badge.
+
+
+**Who gives which badge:** admins give 1st / 2nd / 3rd chair badges; only Alan and Karl (the Team Leveling access list) give **Director**, **Manager** and **Employee of the Month** (`members.badges`, `settings.eom`). **Talent › Team** has an Employee of the Month bar with **⭐ Change Employee of the Month** (pick one person). Everyone’s badges show large (76 px) to the left of their photo on their time card (My Time) and profile.
+
+
+Ehm and Peds are Senior Annotators (Senior Review Annotator / Senior Data Annotator) as in Team Leveling; an earlier one-time change to “Review Manager / Data Manager” is undone on deploy (`senior_titles_v2`), and they don’t get the Manager badge. Titles everywhere come from the person’s record, which Team Leveling edits.
+
+
+List order within each team (Team overview and every other people list): 1st, 2nd, 3rd chair first, then rank / title, then level, then tier (Elite → Pro → Prime), then name.

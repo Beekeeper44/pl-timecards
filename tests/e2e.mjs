@@ -377,6 +377,70 @@ step("9a3. ★ Title change / Compensation increase / Bonus");
   r = await K.op({ op: "reviewFlag", id: rv.id, flag: "title", on: true }); ok(r.status === 403, "team members can’t set stars");
   const av = (await A.get({ week: "" })).body.reviews.find(z => z.id === rv.id); ok(av.recs.comp === true && av.recs.bonus === true, "admins see the stars"); }
 
+step("9a4. Team Leveling (managers only, source of truth)");
+{ const [karl] = await q("select id from members where name='Karl Calma'");
+  let L = await A.get({ leveling: "1" }); ok(L.status === 200 && L.body.rows.length > 50 && L.body.canEditAll, `admins see everyone (${L.body.rows.length})`);
+  ok(!L.body.rows.some(x => x.id === alan.id), "Alan isn’t on the leveling roster");
+  r = await A.op({ op: "memberAdd", fields: { name: "Nina Newhire", email: "nina.newhire@precisionlabeling.com", dept: "Data", rung: 0, tier: "Prime", jobTitle: "Data Annotator 1" } });
+  L = await A.get({ leveling: "1" }); const nn = L.body.rows.find(x => x.name === "Nina Newhire");
+  ok(r.status === 200 && nn && nn.dept === "Data" && nn.rung === 0 && nn.jobTitle === "Data Annotator 1", "a team member added in PL Time Cards shows up in Team Leveling");
+  await A.op({ op: "memberDelete", id: r.body.id, confirmName: "Nina Newhire" }); await q("update settings set value = (select coalesce(jsonb_agg(x), '[]'::jsonb) from jsonb_array_elements(value) x where x->>'email' <> 'nina.newhire@precisionlabeling.com') where key = 'deleted_people'");
+  r = await A.op({ op: "levelingSave", id: karl.id, fields: { rung: 8, tier: "Elite", payCurrent: 38500, payNew: 45000, rank: "Manager", jobTitle: "Team Manager" } });
+  const [k2] = await q("select rung, tier, pay_current, pay_new, rank, job_title from members where id=$1", [karl.id]);
+  ok(r.status === 200 && k2.rung === 8 && k2.tier === "Elite" && k2.pay_new === 45000, "Karl → Level 5 · Elite saved on his member record");
+  const everyone = (await K.get({ week: "" })).body.members.find(m => m.id === karl.id);
+  const adminView = (await A.get({ week: "" })).body.members.find(m => m.id === karl.id);
+  ok(everyone && everyone.rung === 8 && adminView.rung === 8 && adminView.tier === "Elite", "the rest of the app shows Level 5 (and Elite for admins)");
+  ok(everyone.payCurrent === undefined && adminView.payCurrent === undefined && adminView.payNew === undefined, "pay stays inside Team Leveling");
+  r = await A.op({ op: "levelingSave", id: karl.id, fields: { rung: 12 } }); let [k7] = await q("select rung from members where id=$1", [karl.id]); ok(r.status === 200 && k7.rung === 12, "levels go up to Level 7");
+  await A.op({ op: "levelingSave", id: karl.id, fields: { rung: 8 } });
+  L = await K.get({ leveling: "1" }); ok(L.status === 403, "team members can’t open Team Leveling");
+  r = await K.op({ op: "levelingSave", id: karl.id, fields: { tier: "Prime" } }); ok(r.status === 403, "team members can’t change levels");
+  r = await K.op({ op: "levelingConfig", bands: {} }); ok(r.status === 403, "people without access can’t change bands");
+  ok((await A.get({ week: "" })).body.levelingOn === true && (await K.get({ week: "" })).body.levelingOn === false, "the Team Leveling button shows for Alan, not for a team member");
+  L = await A.get({ leveling: "1" }); ok(L.body.access.includes(karl.id) && L.body.access.length === 2, "by default only Alan and Karl have access");
+  r = await A.op({ op: "levelingAccess", ids: [karl.id, khimRow.id] }); L = await K.get({ leveling: "1" });
+  ok(r.status === 200 && r.body.ids.includes(alan.id) && L.status === 200, "access can be given to someone else (and Alan can’t remove himself)");
+  await A.op({ op: "levelingAccess", ids: [karl.id] }); L = await K.get({ leveling: "1" }); ok(L.status === 403, "and taken away again"); }
+
+step("9a5. 1st / 2nd chair and Senior spelling");
+{ const [ehm] = await q("select id from members where name='Ehm Crucillo'"); const [aly] = await q("select id from members where name like 'Alyssa Mae%'");
+  r = await A.op({ op: "orgChair", id: aly.id, leaderId: ehm.id }); let [x] = await q("select chair2_of, manager_id from members where id=$1", [aly.id]);
+  ok(r.status === 200 && x.chair2_of === ehm.id && x.manager_id === ehm.id, "Alyssa becomes 2nd chair to Ehm (and reports to her)");
+  const seen = (await K.get({ week: "" })).body.members.find(m => m.id === aly.id); ok(seen.chair2Of === ehm.id, "everyone sees the 2nd chair on the org chart");
+  const [abe] = await q("select id from members where name='Abe Dato'");
+  await A.op({ op: "orgChair", id: aly.id, leaderId: ehm.id, dept: "Grading" }); await A.op({ op: "orgChair", id: abe.id, leaderId: ehm.id, dept: "Review" });
+  const two = await q("select name, chair2_dept from members where chair2_of=$1 order by chair2_dept", [ehm.id]);
+  ok(two.length === 2 && two.map(x => x.chair2_dept).join() === "Grading,Review", `Ehm has a Grading and a Review 2nd chair (${two.map(x => x.name).join(", ")})`);
+  r = await A.op({ op: "orgChair", id: ehm.id, leaderId: aly.id }); ok(r.status === 400, "a leader can’t be 2nd chair to their own report");
+  r = await A.op({ op: "orgChair", id: aly.id, leaderId: null }); [x] = await q("select chair2_of from members where id=$1", [aly.id]); ok(x.chair2_of === null, "2nd chair can be removed");
+  r = await A.op({ op: "orgChair1", id: aly.id, on: true }); [x] = await q("select chair1, chair2_of from members where id=$1", [aly.id]); ok(r.status === 200 && x.chair1 && !x.chair2_of, "1st chair badge set by hand");
+  r = await A.op({ op: "orgChair", id: aly.id, leaderId: ehm.id, dept: "Grading" }); [x] = await q("select chair1, chair2_of from members where id=$1", [aly.id]); ok(!x.chair1 && x.chair2_of === ehm.id, "switching to 2nd chair clears the 1st chair badge");
+  r = await K.op({ op: "orgChair1", id: aly.id, on: true }); ok(r.status === 403, "team members can’t set chair badges");
+  r = await A.op({ op: "orgChair", id: abe.id, leaderId: ehm.id, dept: "Review", seat: 3 }); [x] = await q("select chair3_of, chair3_dept, chair2_of, chair1 from members where id=$1", [abe.id]);
+  ok(r.status === 200 && x.chair3_of === ehm.id && x.chair3_dept === "Review" && !x.chair2_of && !x.chair1, "3rd chair set (and replaces their 2nd chair seat)");
+  const seen3 = (await K.get({ week: "" })).body.members.find(m => m.id === abe.id); ok(seen3.chair3Of === ehm.id, "everyone sees the 3rd chair");
+  await A.op({ op: "orgChair", id: abe.id, leaderId: null });
+  r = await A.op({ op: "setEom", id: aly.id, month: "2026-11" }); let g = await K.get({ week: "" });
+  ok(r.status === 200 && g.body.eom?.memberId === aly.id && g.body.eom.month === "2026-11", "Employee of the Month is saved and everyone sees it");
+  r = await K.op({ op: "setEom", id: khimRow.id }); ok(r.status === 403, "team members can’t pick Employee of the Month");
+  await A.op({ op: "setEom", id: null });
+  r = await A.op({ op: "setBadge", id: aly.id, badge: "manager", on: true }); let [bx] = await q("select badges from members where id=$1", [aly.id]);
+  ok(r.status === 200 && bx.badges.includes("manager"), "Alan can give the Manager badge");
+  r = await K.op({ op: "setBadge", id: aly.id, badge: "director", on: true }); ok(r.status === 403, "others can’t give Director / Manager badges");
+  await A.op({ op: "setBadge", id: aly.id, badge: "manager", on: false }); [bx] = await q("select badges from members where id=$1", [aly.id]); ok(!bx.badges.includes("manager"), "badge can be taken off");
+  await A.op({ op: "orgChair", id: aly.id, leaderId: null });
+  r = await A.op({ op: "levelingSave", id: aly.id, fields: { jobTitle: "Senor Grading Annotator", rank: "Senor Annotator" } }); [x] = await q("select job_title, rank from members where id=$1", [aly.id]);
+  ok(x.job_title === "Senior Grading Annotator" && x.rank === "Senior Annotator", `“Senor” is fixed to “Senior” (${x.job_title})`); }
+
+step("9a6. Fit level, tier, rank and title to pay");
+{ const { lvFit, lvLadderTitle } = await import("./api/_lib.js");
+  const w = lvFit(25000, "Annotator 1"), d = lvFit(28500, "Junior Annotator"), m = lvFit(35000, "Lead"), c = lvFit(18000, null);
+  ok(w.level === "2.5" && w.tier === "Elite" && lvLadderTitle(null, "CS", w.rank) === "CSR 4", `₱25,000 → Level 2.5 · Elite · CSR 4 (${w.level} ${w.tier} ${lvLadderTitle(null, "CS", w.rank)})`);
+  ok(d.level === "3.5" && d.tier === "Prime" && lvLadderTitle(null, "CS", d.rank) === "Junior CSR", "₱28,500 → Level 3.5 · Prime · Junior CSR");
+  ok(m.level === "4" && m.tier === "Pro" && m.rank === "Lead" && lvLadderTitle(null, "CS", m.rank) === "CS Lead", "₱35,000 Lead → Level 4 · Pro, stays CS Lead");
+  ok(c.level === "1.5" && c.tier === "Prime" && lvLadderTitle(null, "CS", c.rank) === "CSR 2", "₱18,000 → Level 1.5 · Prime · CSR 2"); }
+
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });
 let rq = (await A.get({ week: "" })).body.reviewQuestions; ok(r.status === 200 && rq.self[0][0] === "Proudest win in {Y}?" && rq.mgr.length === 1, "custom questions saved");

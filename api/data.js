@@ -13,6 +13,7 @@ async function openShift(memberId) {
   return s;
 }
 
+const fixSenior = t => String(t || "").replace(/\b(Senor|Seinor|Snior|Senoir)\b/gi, "Senior");
 export default async function handler(req, res) {
   try {
     await ensureSchema();
@@ -25,6 +26,11 @@ export default async function handler(req, res) {
     const me = await currentUser(req);
     if (!me) return fail(res, 401, "Signed out");
     if (req.method === "GET") { await fillRepeatingSchedules().catch(() => {}); await syncReviewers().catch(() => {}); }
+    // Team Leveling access: settings.leveling_access (member ids); until set, Alan and Karl Calma
+    const levelingIds = async () => { const [x] = await sql`select value from settings where key = 'leveling_access'`;
+      if (Array.isArray(x?.value)) return x.value;
+      return (await sql`select id from members where lower(email) = 'alan@arenaclub.com' or name = 'Karl Calma'`).map(r => r.id); };
+    const canLevel = async () => (await levelingIds()).includes(me.id);
     renewSession(req, res, me);   // keep active people signed in
     const admin = me.role === "admin";
     // Late / left early: tell the person's manager (or the admins if they have none), in the app and by email.
@@ -170,6 +176,16 @@ export default async function handler(req, res) {
         where day between ${from}::date and ${to}::date and (${admin} or member_id = ${me.id} or member_id in (select id from members where manager_id = ${me.id}))`;
       return send(res, 200, { rangeShifts: rows, rangeSched: sch });
     }
+    // Team Leveling: admins see everyone, leads see the people under them (all levels down). Pay never goes anywhere else.
+    if (req.method === "GET" && req.query.leveling) {
+      if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
+      const rows = await sql`select id, name, dept, rank, job_title as "jobTitle", manager_id as "managerId", rung, tier, pay_current as "payCurrent", pay_new as "payNew", bonus, level_notes as notes
+        from members where active and lower(coalesce(email, '')) <> 'alan@arenaclub.com' order by coalesce(pay_current, 0) desc, name`;   // Alan isn’t on the leveling plan
+      const [bands] = await sql`select value from settings where key = 'leveling_bands'`;
+      const [ladder] = await sql`select value from settings where key = 'leveling_ladder'`;
+      const access = await levelingIds();
+      return send(res, 200, { rows, bands: bands?.value || null, ladder: ladder?.value || null, canEditAll: true, access });
+    }
     if (req.method === "GET" && req.query.history) {
       const id = String(req.query.history);
       if (!admin && id !== me.id) return fail(res, 403, "You can only see your own history.");
@@ -188,13 +204,13 @@ export default async function handler(req, res) {
       const members$ = admin
         ? sql`select id, name, email, phone, dept, role, active, pin_hash is not null as "hasPin", round(extract(epoch from invited_at) * 1000)::float8 as "invitedAt",
             manager_id as "managerId", rung, tier, to_char(start_date, 'YYYY-MM-DD') as "startDate",
-            job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", pay_type as "payType", overtime,
+            job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", rank, chair2_of as "chair2Of", chair2_dept as "chair2Dept", chair1, chair3_of as "chair3Of", chair3_dept as "chair3Dept", badges, pay_type as "payType", overtime,
             salary::float8 as salary, allowance::float8 as allowance , round(extract(epoch from photo_at) * 1000)::float8 as "photoV", org_solo as "orgSolo" from members order by name`
         : sql`select id, name, dept, role, active, manager_id as "managerId",
             rung, case when id = ${me.id} then tier end as tier,
             case when id = ${me.id} then to_char(start_date, 'YYYY-MM-DD') end as "startDate",
             job_title as "jobTitle", case when id = ${me.id} then leave_days end as "leaveDays",
-            round(extract(epoch from photo_at) * 1000)::float8 as "photoV", org_solo as "orgSolo",
+            round(extract(epoch from photo_at) * 1000)::float8 as "photoV", org_solo as "orgSolo", rank, chair2_of as "chair2Of", chair2_dept as "chair2Dept", chair1, chair3_of as "chair3Of", chair3_dept as "chair3Dept", badges,
             work_location as "workLocation", employment_type as "employmentType",
             case when id = ${me.id} then email end as email, case when id = ${me.id} then phone end as phone,
             case when id = ${me.id} then personal_email end as "personalEmail",
@@ -272,13 +288,15 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "no-store");
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
+      const levelingOn = await canLevel();
+      const eom = (await sql`select value from settings where key = 'eom'`)[0]?.value || null;   // Employee of the Month { memberId, month }
       const swapEvRecomp = ((await sql`select value from settings where key = 'swap_ev_recomp'`)[0]?.value ?? true) === true;
       const idleSignout = +((await sql`select value from settings where key = 'idle_signout'`)[0]?.value || 0);
       const reviewQuestions = (await sql`select value from settings where key = 'review_questions'`)[0]?.value || null;
       const metricsTeams = (await sql`select value from settings where key = 'metrics_teams'`)[0]?.value || {};
       const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { swapEvRecomp, idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { levelingOn, eom, swapEvRecomp, idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -482,6 +500,68 @@ export default async function handler(req, res) {
         sent++;
       }
       return send(res, 200, { ok: true, sent });
+    }
+    if (b.op === "levelingSave") {
+      // Team Leveling is the source of truth: these are the member’s real fields, so the change shows everywhere (org chart, profile, Talent…)
+      if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
+      const f = b.fields || {}, int = v => v === "" || v == null ? null : Math.max(0, Math.round(Number(v))) || 0;
+      const [cur] = await sql`select * from members where id = ${b.id}`; if (!cur) return fail(res, 404, "That person is gone.");
+      const nx = {
+        name: f.name !== undefined ? String(f.name).trim().slice(0, 80) || cur.name : cur.name,
+        dept: f.dept !== undefined && DEPTS.includes(f.dept) ? f.dept : cur.dept,
+        rank: f.rank !== undefined ? (fixSenior(String(f.rank || "").slice(0, 40)) || null) : cur.rank,
+        job_title: f.jobTitle !== undefined ? (fixSenior(String(f.jobTitle || "").trim().slice(0, 80)) || null) : cur.job_title,
+        manager_id: f.managerId !== undefined ? (f.managerId || null) : cur.manager_id,
+        rung: f.rung !== undefined ? (f.rung === "" || f.rung == null ? null : Math.max(0, Math.min(12, parseInt(f.rung, 10)))) : cur.rung,
+        tier: f.tier !== undefined ? (["Prime", "Pro", "Elite"].includes(f.tier) ? f.tier : null) : cur.tier,
+        pay_current: f.payCurrent !== undefined ? int(f.payCurrent) : cur.pay_current,
+        pay_new: f.payNew !== undefined ? int(f.payNew) : cur.pay_new,
+        bonus: f.bonus !== undefined ? int(f.bonus) : cur.bonus,
+        level_notes: f.notes !== undefined ? String(f.notes || "").slice(0, 2000) : cur.level_notes,
+      };
+      if (nx.manager_id === b.id) return fail(res, 400, "Someone can’t report to themselves.");
+      await sql`update members set name = ${nx.name}, dept = ${nx.dept}, rank = ${nx.rank}, job_title = ${nx.job_title}, manager_id = ${nx.manager_id}, rung = ${nx.rung}, tier = ${nx.tier},
+        pay_current = ${nx.pay_current}, pay_new = ${nx.pay_new}, bonus = ${nx.bonus}, level_notes = ${nx.level_notes} where id = ${b.id}`;
+      await bumpRev();
+      return send(res, 200, { ok: true });
+    }
+    if (b.op === "levelingImport") {
+      // Bring in the old Team Leveling export (rows already matched to people by the page)
+      if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
+      let n = 0;
+      for (const x of (Array.isArray(b.rows) ? b.rows : []).slice(0, 500)) {
+        const f = x.fields || {}, int = v => v === "" || v == null ? null : Math.max(0, Math.round(Number(v))) || 0;
+        const r = await sql`update members set
+          dept = coalesce(${DEPTS.includes(f.dept) ? f.dept : null}, dept), rank = coalesce(${f.rank ? fixSenior(f.rank) : null}, rank), job_title = coalesce(${f.jobTitle ? fixSenior(f.jobTitle) : null}, job_title),
+          manager_id = case when ${!!f.managerId} then ${f.managerId || null}::uuid else manager_id end,
+          rung = coalesce(${Number.isInteger(f.rung) ? f.rung : null}::int, rung), tier = coalesce(${["Prime", "Pro", "Elite"].includes(f.tier) ? f.tier : null}, tier),
+          pay_current = ${int(f.payCurrent)}, pay_new = ${int(f.payNew)}, bonus = ${int(f.bonus)}, level_notes = ${String(f.notes || "").slice(0, 2000)}
+          where id = ${x.id} and id <> coalesce(${f.managerId || null}::uuid, '00000000-0000-0000-0000-000000000000'::uuid) returning id`;
+        n += r.length;
+      }
+      await bumpRev();
+      return send(res, 200, { ok: true, updated: n });
+    }
+    if (b.op === "levelingBulk") {
+      if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
+      if (b.action === "clearNew") await sql`update members set pay_new = null where active`;
+      else if (b.action === "clearBonus") await sql`update members set bonus = null where active`;
+      else if (b.action === "newToCurrent") await sql`update members set pay_current = pay_new, pay_new = null where active and pay_new is not null`;
+      else return fail(res, 400, "Unknown action.");
+      return send(res, 200, { ok: true });
+    }
+    if (b.op === "levelingAccess") {
+      if (!(await canLevel())) return fail(res, 403, "Only people with Team Leveling access can change who sees it.");
+      const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String))].slice(0, 50);
+      if (!ids.includes(me.id)) ids.push(me.id);   // you can't lock yourself out
+      await sql`insert into settings (key, value) values ('leveling_access', ${JSON.stringify(ids)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      return send(res, 200, { ok: true, ids });
+    }
+    if (b.op === "levelingConfig") {
+      if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
+      if (b.bands !== undefined) await sql`insert into settings (key, value) values ('leveling_bands', ${JSON.stringify(b.bands)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      if (b.ladder !== undefined) await sql`insert into settings (key, value) values ('leveling_ladder', ${JSON.stringify(b.ladder)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      return send(res, 200, { ok: true });
     }
     if (b.op === "reviewFlag") {
       // ★ Title change / Compensation increase / Bonus — reviewer or admin only; never shown to the person
@@ -867,6 +947,45 @@ export default async function handler(req, res) {
         await sql`delete from shifts where id = ${b.id}`;
         return send(res, 200, { ok: true });
 
+      case "setBadge": {
+        // Director / Manager badges: only the people who can open Team Leveling (Alan and Karl by default)
+        if (!(await canLevel())) return fail(res, 403, "Only Alan and Karl can give Director and Manager badges.");
+        if (!["director", "manager"].includes(b.badge)) return fail(res, 400, "Unknown badge.");
+        if (b.on) await sql`update members set badges = array(select distinct unnest(badges || ${[b.badge]}::text[])) where id = ${b.id}`;
+        else await sql`update members set badges = array_remove(badges, ${b.badge}) where id = ${b.id}`;
+        await bumpRev(); return send(res, 200, { ok: true });
+      }
+      case "setEom": {
+        if (!(await canLevel())) return fail(res, 403, "Only Alan and Karl can pick the Employee of the Month.");
+        // Employee of the Month: one person at a time (null clears it)
+        const v = b.id ? { memberId: b.id, month: String(b.month || "").slice(0, 7) || null, at: Date.now() } : null;
+        await sql`insert into settings (key, value) values ('eom', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+        await bumpRev(); return send(res, 200, { ok: true });
+      }
+      case "orgChair1": {
+        // 1st chair badge by hand (e.g. the go-to person in a team that has no lead yet)
+        await sql`update members set chair1 = ${!!b.on} where id = ${b.id}`;
+        if (b.on) await sql`update members set chair2_of = null, chair2_dept = null, chair3_of = null, chair3_dept = null where id = ${b.id}`;   // one chair at a time
+        await bumpRev(); return send(res, 200, { ok: true });
+      }
+      case "orgChair": {
+        // 2nd chair: b.id becomes the 2nd chair of b.leaderId for team b.dept (and reports to them). One 2nd chair per leader per team. leaderId null clears it.
+        const cdept = b.dept && DEPTS.includes(b.dept) ? b.dept : null;
+        if (b.leaderId) {
+          if (b.leaderId === b.id) return fail(res, 400, "Someone can’t be their own 2nd chair.");
+          const chain = await sql`with recursive up as (select id, manager_id from members where id = ${b.leaderId} union select m.id, m.manager_id from members m join up on m.id = up.manager_id) select id from up`;
+          if (chain.some(r => r.id === b.id)) return fail(res, 400, "That would make a reporting loop.");
+          if (Number(b.seat) === 3) {   // 3rd chair: one per leader per team
+            await sql`update members set chair3_of = null, chair3_dept = null where chair3_of = ${b.leaderId} and chair3_dept is not distinct from ${cdept} and id <> ${b.id}`;
+            await sql`update members set chair3_of = ${b.leaderId}, chair3_dept = ${cdept}, chair2_of = null, chair2_dept = null, manager_id = ${b.leaderId}, dept = coalesce(${cdept}, dept), chair1 = false where id = ${b.id}`;
+          } else {
+            await sql`update members set chair2_of = null, chair2_dept = null where chair2_of = ${b.leaderId} and chair2_dept is not distinct from ${cdept} and id <> ${b.id}`;
+            await sql`update members set chair2_of = ${b.leaderId}, chair2_dept = ${cdept}, chair3_of = null, chair3_dept = null, manager_id = ${b.leaderId}, dept = coalesce(${cdept}, dept), chair1 = false where id = ${b.id}`;
+          }
+        } else await sql`update members set chair2_of = null, chair2_dept = null, chair3_of = null, chair3_dept = null where id = ${b.id}`;
+        await bumpRev();
+        return send(res, 200, { ok: true });
+      }
       case "memberAdd":
       case "memberUpdate": {
         const f = b.fields || {};
@@ -878,7 +997,7 @@ export default async function handler(req, res) {
         if (phone && !phoneOk(phone)) return fail(res, 400, "Enter the phone with country code, like +639171234567.");
         if (f.dept !== undefined && !DEPTS.includes(f.dept)) return fail(res, 400, "Unknown department.");
         if (f.role !== undefined && !["member", "admin"].includes(f.role)) return fail(res, 400, "Unknown role.");
-        if (f.rung !== undefined && f.rung !== null && !(Number.isInteger(f.rung) && f.rung >= 0 && f.rung <= 10)) return fail(res, 400, "Unknown title.");
+        if (f.rung !== undefined && f.rung !== null && !(Number.isInteger(f.rung) && f.rung >= 0 && f.rung <= 12)) return fail(res, 400, "Unknown title.");
         if (f.tier !== undefined && f.tier !== null && !["Prime", "Pro", "Elite"].includes(f.tier)) return fail(res, 400, "Unknown tier.");
         if (f.startDate !== undefined && f.startDate !== null && !dayOk(f.startDate)) return fail(res, 400, "Enter a valid start date.");
         if (f.leaveDays !== undefined && f.leaveDays !== null && !(Number.isInteger(f.leaveDays) && f.leaveDays >= 0 && f.leaveDays <= 60)) return fail(res, 400, "Leave days must be 0 to 60.");
@@ -901,7 +1020,7 @@ export default async function handler(req, res) {
             await sql`update settings set value = (select coalesce(jsonb_agg(x), '[]'::jsonb) from jsonb_array_elements(value) x where lower(x->>'email') <> ${email}) where key = 'deleted_people'`;
             const [nm] = await sql`insert into members (name, email, phone, dept, role, manager_id, rung, tier, start_date, job_title, work_location, personal_email)
               values (${name}, ${email}, ${phone || null}, ${f.dept || "Grading"}, ${f.role || "member"}, ${f.managerId || null}::uuid, ${f.rung ?? null}::int, ${f.tier || null},
-                ${f.startDate || null}::date, ${f.jobTitle ? String(f.jobTitle).trim().slice(0, 60) : null}, ${f.workLocation ? String(f.workLocation).trim().slice(0, 60) : null}, ${f.personalEmail ? normEmail(f.personalEmail) : null}) returning id`;
+                ${f.startDate || null}::date, ${f.jobTitle ? fixSenior(String(f.jobTitle).trim().slice(0, 60)) : null}, ${f.workLocation ? String(f.workLocation).trim().slice(0, 60) : null}, ${f.personalEmail ? normEmail(f.personalEmail) : null}) returning id`;
             await sql`insert into member_history (member_id, field, old_value, new_value, changed_by) values (${nm.id}, 'added', null, ${name}, ${me.id})`;
             return send(res, 200, { ok: true, id: nm.id });
           } else {
@@ -918,7 +1037,7 @@ export default async function handler(req, res) {
             }
             const has = k => f[k] !== undefined;
             const [before] = await sql`select name, email, phone, dept, role, active, manager_id as "managerId", rung, tier,
-              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
+              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", rank, chair2_of as "chair2Of", chair2_dept as "chair2Dept", chair1, chair3_of as "chair3Of", chair3_dept as "chair3Dept", badges, pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
             if (!before) return fail(res, 404, "That person isn’t on the roster.");
             await sql`update members set
               name = coalesce(${name ?? null}, name), email = coalesce(${email ?? null}, email),
@@ -929,7 +1048,7 @@ export default async function handler(req, res) {
               rung = case when ${has("rung")} then ${f.rung ?? null}::int else rung end,
               tier = case when ${has("tier")} then ${f.tier || null} else tier end,
               start_date = case when ${has("startDate")} then ${f.startDate || null}::date else start_date end,
-              job_title = case when ${has("jobTitle")} then ${f.jobTitle ? String(f.jobTitle).trim().slice(0, 60) : null} else job_title end,
+              job_title = case when ${has("jobTitle")} then ${f.jobTitle ? fixSenior(String(f.jobTitle).trim().slice(0, 60)) : null} else job_title end,
               leave_days = case when ${has("leaveDays")} then ${f.leaveDays ?? null}::int else leave_days end,
               employment_type = case when ${has("employmentType")} then ${f.employmentType || null} else employment_type end,
               work_location = case when ${has("workLocation")} then ${f.workLocation ? String(f.workLocation).trim().slice(0, 60) : null} else work_location end,
@@ -942,7 +1061,7 @@ export default async function handler(req, res) {
               where id = ${b.id}`;
             // Profile history: one row per field that actually changed.
             const [after] = await sql`select name, email, phone, dept, role, active, manager_id as "managerId", rung, tier,
-              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
+              to_char(start_date, 'YYYY-MM-DD') as "startDate", job_title as "jobTitle", leave_days as "leaveDays", employment_type as "employmentType", work_location as "workLocation", personal_email as "personalEmail", coalesce(meet_link, case when lower(email) = 'alan@arenaclub.com' then 'https://meet.google.com/ara-qmvp-frj' end) as "meetLink", anytime_off as "anytimeOff", default_codes as "repeatCodes", rank, chair2_of as "chair2Of", chair2_dept as "chair2Dept", chair1, chair3_of as "chair3Of", chair3_dept as "chair3Dept", badges, pay_type as "payType", overtime, salary::float8 as salary, allowance::float8 as allowance from members where id = ${b.id}`;
             const str = v => v == null ? null : String(v);
             for (const k of Object.keys(after)) {
               if (str(before[k]) !== str(after[k]))

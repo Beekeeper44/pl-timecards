@@ -183,6 +183,21 @@ async function migrate() {
     await sql`alter table members add column if not exists meet_link text`;
     await sql`alter table members add column if not exists anytime_off boolean not null default false`;
     await sql`alter table members add column if not exists default_codes text[] not null default '{}'`;   // habits that repeat every workday
+    // Team Leveling (managers only): rank on the job ladder, pay and notes. Level = rung (L = 1 + rung/2), tier, title, team and manager are the normal member fields.
+    await sql`alter table members add column if not exists rank text`;
+    await sql`alter table members add column if not exists pay_current int`;
+    await sql`alter table members add column if not exists pay_new int`;
+    await sql`alter table members add column if not exists bonus int`;
+    await sql`alter table members add column if not exists level_notes text`;
+    await sql`alter table members add column if not exists chair2_of uuid`;   // org chart: this person is the 2nd chair of that leader (1st chair)
+    await sql`alter table members add column if not exists chair2_dept text`;
+    await sql`alter table members add column if not exists chair1 boolean not null default false`;
+    await sql`alter table members add column if not exists chair3_of uuid`;   // 3rd chair (backs up the 2nd) for that leader…
+    await sql`alter table members add column if not exists chair3_dept text`; // …in this team
+    await sql`alter table members add column if not exists badges text[] not null default '{}'`;   // special badges: director, manager (given by Alan / Karl)   // marked 1st chair by hand (e.g. in a team without a lead) // …for this team (a leader of Review and Grading has one 2nd chair per team)
+    // Spelling: "Senor" / "Seinor" / "Snior" → "Senior" in titles and ranks
+    await sql`update members set job_title = regexp_replace(job_title, '\m(Senor|Seinor|Snior|Senoir)\M', 'Senior', 'gi') where job_title ~* '\m(Senor|Seinor|Snior|Senoir)\M'`;
+    await sql`update members set rank = regexp_replace(rank, '\m(Senor|Seinor|Snior|Senoir)\M', 'Senior', 'gi') where rank ~* '\m(Senor|Seinor|Snior|Senoir)\M'`;
     await sql`alter table schedules add column if not exists auto boolean not null default false`;      // row filled from default_codes   // admin switched their "any time" off   // this person's usual 1:1 meeting link (used when they book a 1:1)
     // One-time: Alan's usual Google Meet room, also on his upcoming 1:1s that don't have a link yet.
     const [ml] = await sql`insert into settings (key, value) values ('meet_link_alan_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
@@ -197,6 +212,52 @@ async function migrate() {
     const [selfRv] = await sql`insert into settings (key, value) values ('no_self_reviewer_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (selfRv) await sql`delete from reviews where member_id = reviewer_id and coalesce(jsonb_array_length(self_answers), 0) = 0
       and coalesce(jsonb_array_length(mgr_answers), 0) = 0 and status <> 'shared'`.catch(() => {});
+    // One-time: Nico (Paul Nico Andrade) is set up like Jensen — Items Lead, rank Lead, Level 3 · Prime, ₱25,000
+    const [nico] = await sql`insert into settings (key, value) values ('nico_items_lead_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (nico) await sql`update members set dept = 'Items', job_title = 'Items Lead', rank = 'Lead', rung = 4, tier = 'Prime', pay_current = 25000
+      where lower(email) = 'nico@precisionlabeling.com' or name ilike '%Nico Andrade%'`.catch(() => {});
+    // One-time: Jensen → Junior Recomp Annotator, Nico → Junior Item Annotator (rank Junior Annotator; level, tier and pay unchanged)
+    const [jr] = await sql`insert into settings (key, value) values ('junior_jensen_nico_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (jr) {
+      await sql`update members set job_title = 'Junior Recomp Annotator', rank = 'Junior Annotator' where lower(email) = 'jensen@precisionlabeling.com' or name ilike 'Jensen Manalastas%'`.catch(() => {});
+      await sql`update members set job_title = 'Junior Item Annotator', rank = 'Junior Annotator' where lower(email) = 'nico@precisionlabeling.com' or name ilike '%Nico Andrade%'`.catch(() => {});
+    }
+    // One-time: current pay from the November 2026 payroll list (124 people, matched by work email). Level, tier and new pay are untouched.
+    const [pr] = await sql`insert into settings (key, value) values ('payroll_2026_11_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (pr) { const PAY = {"rosemarie@precisionlabeling.com":33000,"marco@precisionlabeling.com":35000,"raymond@precisionlabeling.com":22500,"nico@precisionlabeling.com":25000,"charles@precisionlabeling.com":20000,"queenie@precisionlabeling.com":20000,"jon@precisionlabeling.com":28500,"jairho@precisionlabeling.com":19000,"jensen@precisionlabeling.com":25000,"mark.erwin@precisionlabeling.com":22500,"rence.tang@precisionlabeling.com":21500,"karl@precisionlabeling.com":38500,"benedict@precisionlabeling.com":17000,"dominic@precisionlabeling.com":22500,"abe@precisionlabeling.com":25000,"aprilv@precisionlabeling.com":15000,"rosen@precisionlabeling.com":21500,"alexa@precisionlabeling.com":19000,"adrianp@precisionlabeling.com":20000,"xerxiab@precisionlabeling.com":20000,"jasminb@precisionlabeling.com":20000,"equeipo@precisionlabeling.com":17000,"ramy@precisionlabeling.com":20000,"nelzon@precisionlabeling.com":17000,"joshuary@precisionlabeling.com":19000,"laurencedapon@precisionlabeling.com":22500,"ianf@precisionlabeling.com":17000,"kimm@precisionlabeling.com":15000,"josh.mercado@precisionlabeling.com":15000,"gino@precisionlabeling.com":20000,"joson@precisionlabeling.com":16500,"princess.paragas@precisionlabeling.com":16000,"jericm@precisionlabeling.com":15000,"john.carlo@precisionlabeling.com":16500,"aljen.magat@precisionlabeling.com":15000,"david.dizon@precisionlabeling.com":15000,"lkingdguzman@precisionlabeling.com":16500,"cyleviste@precisionlabeling.com":17000,"catherineyap@precisionlabeling.com":16500,"macarmelaaalvaro@precisionlabeling.com":16500,"laurizem@precisionlabeling.com":24000,"jonelnajera@precisionlabeling.com":16500,"ajoaquin@precisionlabeling.com":17000,"carlocopada@precisionlabeling.com":16000,"neiltepora@precisionlabeling.com":17000,"kleinferreras@precisionlabeling.com":16500,"ericah@precisionlabeling.com":16500,"calvincaceres@precisionlabeling.com":16500,"julailacastillo@precisionlabeling.com":20000,"thomasarcilla@precisionlabeling.com":16500,"myriamdizon@precisionlabeling.com":16500,"alyssa@precisionlabeling.com":16500,"estefhany@precisionlabeling.com":16000,"blaise@precisionlabeling.com":15000,"ian.banua@precisionlabeling.com":15000,"jose.arcilla@precisionlabeling.com":15000,"khim.arcilla@precisionlabeling.com":17000,"faith.anches@precisionlabeling.com":15000,"rusty.saludo@precisionlabeling.com":15000,"luvy.bunga@precisionlabeling.com":20000,"pau.capistrano@precisionlabeling.com":20000,"ryan.borsigue@precisionlabeling.com":15000,"maria.moreto@precisionlabeling.com":15000,"sheila.doldig@precisionlabeling.com":15000,"kean@precisionlabeling.com":15000,"jommel.javier@precisionlabeling.com":15000,"camille.meneses@precisionlabeling.com":15000,"john.paolo.pante@precisionlabeling.com":15000,"michaela.cruz@precisionlabeling.com":15000,"ramoncito.lacaba@precisionlabeling.com":15000,"marsen.hernandez@precisionlabeling.com":15000,"mhike.joshuamendoza@precisionlabeling.com":16000,"erys.deleon@precisionlabeling.com":20000,"jeromee@precisionlabeling.com":24000,"ckashb@precisionlabeling.com":21000,"nonam@precisionlabeling.com":20000,"joannl@precisionlabeling.com":18000,"almirai@precisionlabeling.com":19000,"abraham.salisi@precisionlabeling.com":15000,"carmen.cortez@precisionlabeling.com":15000,"joseph.somera@precisionlabeling.com":15000,"maher.calingasan@precisionlabeling.com":15000,"richard.cater@precisionlabeling.com":15000,"ron.opelanio@precisionlabeling.com":15000,"vince.fernandez@precisionlabeling.com":16000,"maria.ramirez@precisionlabeling.com":19000,"jorean.tapic@precisionlabeling.com":18000,"cathasis28@gmail.com":19000,"francis.genoso@precisionlabeling.com":23000,"wella.sadicon@precisionlabeling.com":25000,"elaine.mayol@precisionlabeling.com":21000,"ranie.revuelta@precisionlabeling.com":16000,"denise.solon@precisionlabeling.com":16000,"anjello.bumanlag@precisionlabeling.com":15000,"donald.quinones@precisionlabeling.com":15000,"inahm.gaines@precisionlabeling.com":15000,"ivan.ferreras@precisionlabeling.com":15000,"johnm.macasaya@precisionlabeling.com":15000,"justine.alampay@precisionlabeling.com":15000,"ricam.reyes@precisionlabeling.com":15000,"roda.santos@precisionlabeling.com":15000,"eugene.acaba@precisionlabeling.com":15000,"anthony.delacruz@precisionlabeling.com":18000,"john.estipular@precisionlabeling.com":18000,"rodjie.escuro@precisionlabeling.com":15000,"irish.gonzales@precisionlabeling.com":15000,"russell.cabang@precisionlabeling.com":15000,"queenie.lozano@precisionlabeling.com":15000,"remzen.karlapalo@precisionlabeling.com":15000,"jhon.gagaring@precisionlabeling.com":15000,"jaysalili@precisionlabeling.com":15000,"kayser.florence@precisionlabeling.com":15000,"rodel.borromeo@precisionlabeling.com":15000,"gerson.muyot@precisionlabeling.com":15000,"steven.ignacio@precisionlabeling.com":15000,"abigael.calasin@precisionlabeling.com":15000,"eloisajoycemoyo@precisionlabeling.com":15000,"raquel.valdecantos@precisionlabeling.com":15000,"tyrone.moraleda@precisionlabeling.com":15000,"jamaica.bangcat@precisionlabeling.com":15000,"john.vincent@precisionlabeling.com":15000,"ped@precisionlabeling.com":33000,"pat@precisionlabeling.com":20000,"princess.c@precisionlabeling.com":15000};
+      await sql`update members m set pay_current = (x.value)::int from jsonb_each_text(${JSON.stringify(PAY)}::jsonb) x where lower(m.email) = x.key`.catch(() => {}); }
+    // One-time: CS — level, tier, rank and title fitted to the payroll pay (after the payroll update above)
+    const [csfit] = await sql`insert into settings (key, value) values ('cs_fit_to_pay_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (csfit) { try {
+      const [bs] = await sql`select value from settings where key = 'leveling_bands'`, [ld] = await sql`select value from settings where key = 'leveling_ladder'`;
+      for (const m of await sql`select id, dept, rank, pay_current from members where active and dept = 'CS' and pay_current is not null`) {
+        const f = lvFit(m.pay_current, m.rank, bs?.value), title = lvLadderTitle(ld?.value, m.dept, f.rank);
+        await sql`update members set rung = ${f.rung}, tier = ${f.tier}, rank = ${f.rank}, job_title = coalesce(${title}, job_title) where id = ${m.id}`;
+      } } catch (e) {} }
+    // One-time: Elaine (Community Lead, ₱21,000) fitted to the bands → Level 2 · Pro, stays Community Lead
+    const [el] = await sql`insert into settings (key, value) values ('elaine_fit_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (el) { try { const [bs] = await sql`select value from settings where key = 'leveling_bands'`;
+      for (const m of await sql`select id, rank, pay_current from members where name ilike 'Elaine Joy%Mayol%' and pay_current is not null`) {
+        const f = lvFit(m.pay_current, m.rank || "Lead", bs?.value); await sql`update members set rung = ${f.rung}, tier = ${f.tier}, rank = coalesce(rank, 'Lead') where id = ${m.id}`; } } catch (e) {} }
+    // One-time: Data — Peds is 1st chair, Ramy (Ramy Manansala de Jesus) is Data 2nd chair to Peds
+    const [pr2] = await sql`insert into settings (key, value) values ('data_chairs_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (pr2) { try { const [peds] = await sql`select id from members where name = 'Peds Magat' limit 1`;
+      if (peds) { await sql`update members set chair1 = true where id = ${peds.id}`;
+        await sql`update members set chair1 = false, chair2_of = ${peds.id}, chair2_dept = 'Data', manager_id = ${peds.id} where name ilike 'Ramy%de Jesus%'`; } } catch (e) {} }
+    // One-time: Abe Dato is Grading’s 1st chair (team Grading, still under Ehm)
+    const [abe1] = await sql`insert into settings (key, value) values ('abe_grading_chair_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (abe1) await sql`update members set dept = 'Grading', chair1 = true, chair2_of = null, chair2_dept = null, chair3_of = null, chair3_dept = null where name = 'Abe Dato' or lower(email) = 'abe@precisionlabeling.com'`.catch(() => {});
+    // (manager_titles_v1 used to make Ehm “Review Manager” and Peds “Data Manager” — undone below; Team Leveling has them as Senior Annotators)
+    const [snr] = await sql`insert into settings (key, value) values ('senior_titles_v2', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (snr) { await sql`update members set job_title = 'Senior Review Annotator', rank = 'Senior Annotator', badges = array_remove(badges, 'manager') where name = 'Ehm Crucillo'`.catch(() => {});
+      await sql`update members set job_title = 'Senior Data Annotator', rank = 'Senior Annotator', badges = array_remove(badges, 'manager') where name = 'Peds Magat'`.catch(() => {}); }
+    // One-time: special badges from today’s titles — Director (Alan), Manager (Karl, Ehm, Peds and any Manager rank)
+    const [sb] = await sql`insert into settings (key, value) values ('special_badges_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (sb) { await sql`update members set badges = array['director'] where job_title ilike '%director%'`.catch(() => {});
+      await sql`update members set badges = array['manager'] where job_title ~* '\mmanager\M' and job_title not ilike '%director%' and name not in ('Ehm Crucillo', 'Peds Magat')`.catch(() => {}); }
+    // One-time: nobody is Employee of the Month yet
+    const [eo] = await sql`insert into settings (key, value) values ('eom_clear_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (eo) await sql`delete from settings where key = 'eom'`.catch(() => {});
     // One-time: Princess Cabalar (Metabase: Princess / Cess Cordova) moved from Data to Grading, reporting to Ehm Crucillo.
     const [pc] = await sql`insert into settings (key, value) values ('princess_grading_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (pc) await sql`update members set dept = 'Grading', job_title = 'Grading Annotator 1',
@@ -254,6 +315,30 @@ export async function syncReviewers() {
   await sql`update reviews r set reviewer_id = m.manager_id, updated_at = now() from members m, review_cycles c
     where r.member_id = m.id and c.id = r.cycle_id and c.status = 'open' and m.manager_id is not null and m.manager_id <> m.id
       and r.reviewer_id is distinct from m.manager_id and r.status <> 'shared' and coalesce(jsonb_array_length(r.mgr_answers), 0) = 0`;
+}
+// Team Leveling: level / tier / rank / title that fit someone's pay (the lowest level whose band reaches it).
+export const LV_DEF_BANDS = { "7": { Prime: [77000, 81000], Pro: [81000, 85000], Elite: [85000, 90000] }, "6.5": { Prime: [67000, 70000], Pro: [70000, 73000], Elite: [73000, 77000] },
+  "6": { Prime: [58000, 61000], Pro: [61000, 64000], Elite: [64000, 67000] }, "5.5": { Prime: [50000, 52500], Pro: [52500, 55000], Elite: [55000, 58000] },
+  "5": { Prime: [43000, 45000], Pro: [45000, 47000], Elite: [47000, 50000] }, "4.5": { Prime: [37000, 39000], Pro: [39000, 41000], Elite: [41000, 43000] }, "4": { Prime: [31000, 33000], Pro: [33000, 35000], Elite: [35000, 37000] },
+  "3.5": { Prime: [28000, 29000], Pro: [29000, 30000], Elite: [30000, 31000] }, "3": { Prime: [25000, 26000], Pro: [26000, 27000], Elite: [27000, 28000] }, "2.5": { Prime: [22000, 23000], Pro: [23000, 24000], Elite: [24000, 25000] },
+  "2": { Prime: [19000, 20000], Pro: [20000, 21000], Elite: [21000, 22000] }, "1.5": { Prime: [17000, 18000], Pro: [18000, 18500], Elite: [18500, 19000] }, "1": { Prime: [15000, 16000], Pro: [16000, 16500], Elite: [16500, 17000] } };
+const LV_ASC = ["1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "5.5", "6", "6.5", "7"];
+const LV_RANK_AT = { "1": "Annotator 1", "1.5": "Annotator 2", "2": "Annotator 3", "2.5": "Annotator 4", "3": "Annotator 5", "3.5": "Junior Annotator" };
+const LV_BASE = { Grading: "Grading Annotator", Items: "Item Annotator", Data: "Data Annotator", Recomp: "Recomp Annotator", Review: "Review Annotator", CS: "CSR", Community: "Community Annotator", Managers: "Coordinator", Analysts: "Analyst" };
+const LV_TOP = { Grading: ["Grading Lead", "Grading Manager"], Items: ["Items Lead", "Items Manager"], Data: ["Data Lead", "Data Manager"], Recomp: ["Recomp Lead", "Recomp Manager"], Review: ["Review Lead", "Review Manager"], CS: ["CS Lead", "CS Manager"], Community: ["Community Lead", "Community Manager"], Managers: ["Ops Lead", "Team Manager"], Analysts: ["Analytics Lead", "Analytics Manager"] };
+export function lvLadderTitle(ladder, dept, rank) {
+  if (ladder?.[dept]?.[rank]) return ladder[dept][rank];
+  const b = LV_BASE[dept]; if (!b) return null;
+  const i = ["Annotator 1", "Annotator 2", "Annotator 3", "Annotator 4", "Annotator 5"].indexOf(rank);
+  return i >= 0 ? `${b} ${i + 1}` : rank === "Junior Annotator" ? `Junior ${b}` : rank === "Senior Annotator" ? `Senior ${b}` : rank === "Lead" ? LV_TOP[dept][0] : rank === "Manager" ? LV_TOP[dept][1] : null;
+}
+export function lvFit(pay, rank, bands) {
+  bands = { ...LV_DEF_BANDS, ...(bands || {}) }; pay = Number(pay) || 0;
+  let level = LV_ASC.find(l => bands[l] && pay <= bands[l].Elite[1]) || "7";
+  const b = bands[level], tier = ["Prime", "Pro", "Elite"].find(t => pay <= b[t][1]) || "Elite";
+  // Leads and Managers keep their rank; everyone else gets the rank that goes with the level
+  const newRank = ["Lead", "Manager"].includes(rank) ? rank : (LV_RANK_AT[level] || "Senior Annotator");
+  return { rung: Math.round((Number(level) - 1) * 2), tier, rank: newRank, level };
 }
 export function sign(payload) {
   const p = b64u(JSON.stringify(payload));
@@ -318,7 +403,7 @@ export const normPhone = p => {
   else if (/^639\d{9}$/.test(x)) x = "+" + x;
   return x;
 };
-export const DEPTS = ["Managers", "Analysts", "Review", "Data", "Items", "Recomp", "Community", "Grading", "CS"];
+export const DEPTS = ["Managers", "Analysts", "Review", "Grading", "Data", "Recomp", "Items", "Community", "CS"];   // same order as the page
 
 // ---------- senders ----------
 const twilioAuth = () => "Basic " + Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
