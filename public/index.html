@@ -103,6 +103,8 @@ a{color:var(--brandInk)}
 .c-name b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c-name small{display:block;font-size:13px;color:var(--muted)}
 .c-status{position:relative;padding:0 12px;border-right:1px solid var(--line);gap:6px}
+.shclone{position:fixed;z-index:25;overflow:hidden;pointer-events:auto;box-shadow:0 6px 12px -8px rgba(0,0,0,.6);background:var(--panel2)}
+.shclone .shin{will-change:transform} .shclone table{border-collapse:collapse} .shclone thead th{background:var(--panel2)} .shclone .c-name{background:var(--panel2)}
 .tlhead{background:var(--panel2);min-height:46px;font-size:14px;font-weight:500;color:var(--muted)}
 .tlhead .c-name{background:var(--panel2)}
 .tzsel{width:100%;height:32px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);font-size:14px;padding:0 8px}
@@ -7990,6 +7992,50 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
     if (view === "leveling") { renderLeveling(); loadLeveling(); }
   }
 
+  // ---------- Sticky table headers ----------
+  // Tables live in sideways-scrolling boxes, which stops CSS position:sticky from working on the page, so long tables
+  // get a floating copy of their header that pins under the top bar and follows sideways scrolling. Clicks on the copy
+  // go to the real header (sort buttons and so on).
+  const SH = { el: null, src: null, sig: "", raf: 0 };
+  function shTargets() {
+    const v = document.querySelector("main section:not([hidden])") || document;
+    const heads = [...v.querySelectorAll(".tlwrap .tlhead"), ...[...v.querySelectorAll("table")].filter(t => t.tBodies[0] && t.tBodies[0].rows.length >= 8).map(t => t.tHead).filter(Boolean)];
+    return heads.filter(h => h.offsetParent !== null && !h.closest(".lvsolo,dialog"));
+  }
+  function shUpdate() {
+    SH.raf = 0;
+    const bar = document.querySelector(".topbar"), top = bar ? Math.max(0, bar.getBoundingClientRect().bottom) : 0;
+    let pick = null;
+    for (const h of shTargets()) { const r = h.getBoundingClientRect(), box = (h.closest("table") || h.parentElement).getBoundingClientRect();
+      if (r.top < top && box.bottom > top + r.height + 20) { pick = h; break; } }
+    if (!pick) { if (SH.el) SH.el.hidden = true; SH.src = null; return; }
+    if (!SH.el) { SH.el = document.createElement("div"); SH.el.className = "shclone"; document.body.appendChild(SH.el);
+      SH.el.addEventListener("click", e => { if (!SH.src) return; if (e.target.closest("select")) return; const t = e.target.closest("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th"); if (!t) return;
+        const all = [...SH.el.querySelectorAll("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th")], i = all.indexOf(t);
+        const real = [...SH.src.querySelectorAll("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th")][i]; if (real) { e.preventDefault(); real.click(); } });
+      SH.el.addEventListener("change", e => { if (!SH.src || e.target.tagName !== "SELECT") return; const i = [...SH.el.querySelectorAll("select")].indexOf(e.target), real = SH.src.querySelectorAll("select")[i];
+        if (real) { real.value = e.target.value; real.dispatchEvent(new Event("change", { bubbles: true })); } }); }
+    const scroller = pick.closest(".tlwrap,.tablewrap") || pick.closest("table")?.parentElement || pick.parentElement;
+    const sr = scroller.getBoundingClientRect(), table = pick.closest("table");
+    const sig = (table ? table.className : pick.className) + "|" + pick.innerHTML.length + "|" + (table ? table.offsetWidth : pick.offsetWidth) + "|" + pick.textContent.slice(0, 120);
+    if (SH.src !== pick || SH.sig !== sig) {
+      SH.src = pick; SH.sig = sig;
+      if (table) { const ths = [...pick.rows[pick.rows.length - 1].cells];
+        SH.el.innerHTML = `<div class="shin"><table class="${table.className}" style="width:${table.offsetWidth}px;table-layout:fixed;margin:0"><colgroup>${ths.map(c => `<col style="width:${c.offsetWidth}px">`).join("")}</colgroup>${pick.outerHTML}</table></div>`; }
+      else SH.el.innerHTML = `<div class="shin ${pick.parentElement.className}" style="width:${pick.offsetWidth}px">${pick.outerHTML}</div>`;
+      SH.el.querySelectorAll("[id]").forEach(x => x.removeAttribute("id"));
+    }
+    Object.assign(SH.el.style, { top: top + "px", left: sr.left + "px", width: sr.width + "px" });
+    SH.el.firstElementChild.style.transform = `translateX(${-scroller.scrollLeft}px)`;
+    // the first column stays put when the table scrolls sideways (like the real rows), so pin it in the copy too
+    SH.el.querySelectorAll(".c-name, th:first-child").forEach(x => { x.style.transform = `translateX(${scroller.scrollLeft}px)`; x.style.position = "relative"; x.style.zIndex = "2"; });
+    SH.el.hidden = false;
+  }
+  const shSchedule = () => { if (!SH.raf) SH.raf = requestAnimationFrame(shUpdate); };
+  window.addEventListener("scroll", shSchedule, { passive: true });
+  window.addEventListener("resize", () => { SH.sig = ""; shSchedule(); });
+  document.addEventListener("scroll", e => { if (e.target !== document && e.target.closest && e.target.closest(".tlwrap,.tablewrap")) shSchedule(); }, { capture: true, passive: true });
+  new MutationObserver(() => { SH.sig = ""; shSchedule(); }).observe(document.querySelector("main") || document.body, { childList: true, subtree: true });
   // ---------- boot ----------
   $("authLogo").src = document.querySelector(".logo").src;
   const h = location.hash.slice(1); if (VIEWS.includes(h)) view = h; else if (h.startsWith("mytime-")) view = "mytime"; else if (h.startsWith("profile-")) view = "profile";
