@@ -258,6 +258,13 @@ async function migrate() {
     // One-time: nobody is Employee of the Month yet
     const [eo] = await sql`insert into settings (key, value) values ('eom_clear_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (eo) await sql`delete from settings where key = 'eom'`.catch(() => {});
+    // One-time: the Analysts team uses the Analysts ladder titles (Data Annotator 4 → Analyst 4 …)
+    const [an] = await sql`insert into settings (key, value) values ('analyst_titles_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (an) await sql`update members set job_title = regexp_replace(job_title, '^Data Annotator ([1-5])$', 'Analyst \1'),
+        rank = coalesce(rank, 'Annotator ' || substring(job_title from '([1-5])$')) where dept = 'Analysts' and job_title ~ '^Data Annotator [1-5]$'`.catch(() => {});
+    // One-time: Abe → Grading Annotator 5 (rank Annotator 5, Level 3); still Grading’s 1st chair
+    const [ab5] = await sql`insert into settings (key, value) values ('abe_ga5_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (ab5) await sql`update members set dept = 'Grading', job_title = 'Grading Annotator 5', rank = 'Annotator 5', rung = 4, tier = coalesce(tier, 'Prime') where name = 'Abe Dato'`.catch(() => {});
     // One-time: Princess Cabalar (Metabase: Princess / Cess Cordova) moved from Data to Grading, reporting to Ehm Crucillo.
     const [pc] = await sql`insert into settings (key, value) values ('princess_grading_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (pc) await sql`update members set dept = 'Grading', job_title = 'Grading Annotator 1',

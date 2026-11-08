@@ -358,3 +358,21 @@ Ehm and Peds are Senior Annotators (Senior Review Annotator / Senior Data Annota
 
 
 List order within each team (Team overview and every other people list): 1st, 2nd, 3rd chair first, then rank / title, then level, then tier (Elite → Pro → Prime), then name.
+
+
+Org chart: a team’s 1st chair (e.g. Abe for Grading) sits on top of their team’s box — above it, centred on the line from the leader — with their 2nd / 3rd positions just under them, then the team box.
+
+
+Buttons: instant press feedback (slight shrink + brighten), no 300 ms tap delay on phones, keyboard focus ring, and a small spinner on the pressed button while its save is running (it can’t be double-clicked meanwhile).
+
+
+Team Leveling › Roster: **Job title** is a dropdown of that person’s team’s job-ladder titles (highest first — e.g. Analysts: Analytics Manager … Analyst 1). Picking one also sets the matching rank. A title that isn’t on the team’s ladder is shown as “(not on the … ladder)”; **Other title…** switches to a text box.
+
+
+Team Leveling › Roster: the **Rank** dropdown uses the team’s own words, highest first (Analysts: “Analyst 2 · Annotator 2”, Data: “Data Annotator 2 · Annotator 2” …). Changing rank also sets the matching ladder title; changing team re-titles them on the new team’s ladder. The Analysts team’s “Data Annotator N” titles become “Analyst N” once on deploy.
+
+
+Changing someone’s job title or rank in Team Leveling also sets the level for that rank (Annotator 1 → L1 … Annotator 5 → L3, Junior → L3.5, Senior → L4, Lead → L4.5, Manager → L5); tier is kept. Abe is Grading Annotator 5 (Level 3), still Grading’s 1st chair — set once on deploy.
+
+
+Team Leveling › Roster: **⛶ Full screen** on an open row shows only that person (everyone else hidden) in a full-screen view; **✕ Close · back to Team Leveling** (or Esc) returns to the roster.
