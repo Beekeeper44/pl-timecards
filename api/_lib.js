@@ -341,8 +341,9 @@ export function lvLadderTitle(ladder, dept, rank) {
 }
 export function lvFit(pay, rank, bands) {
   bands = { ...LV_DEF_BANDS, ...(bands || {}) }; pay = Number(pay) || 0;
-  let level = LV_ASC.find(l => bands[l] && pay <= bands[l].Elite[1]) || "7";
-  const b = bands[level], tier = ["Prime", "Pro", "Elite"].find(t => pay <= b[t][1]) || "Elite";
+  // a band starts at its low number: ₱16,500 at Level 1 is Elite (16,500–17,000), ₱17,000 is Level 1.5 Prime
+  let level = "1"; for (const l of LV_ASC) if (bands[l] && pay >= bands[l].Prime[0]) level = l;
+  const b = bands[level]; let tier = "Prime"; for (const t of ["Prime", "Pro", "Elite"]) if (pay >= b[t][0]) tier = t;
   // Leads and Managers keep their rank; everyone else gets the rank that goes with the level
   const newRank = ["Lead", "Manager"].includes(rank) ? rank : (LV_RANK_AT[level] || "Senior Annotator");
   return { rung: Math.round((Number(level) - 1) * 2), tier, rank: newRank, level };

@@ -376,3 +376,12 @@ Changing someone’s job title or rank in Team Leveling also sets the level for 
 
 
 Team Leveling › Roster: **⛶ Full screen** on an open row shows only that person (everyone else hidden) in a full-screen view; **✕ Close · back to Team Leveling** (or Esc) returns to the roster.
+
+
+The ② / ③ position tags under a leader only show in Org chart › Edit (as drop slots). Outside Edit, the 1st / 2nd / 3rd chairs are shown by the badges on their own cards.
+
+
+**Pay ↔ level, tier, rank and title stay in step (Team Leveling):** a band starts at its low number (₱16,500 at Level 1 is **Elite**, ₱17,000 is **Level 1.5 Prime**). Typing a new **Current** or **New pay** sets level, tier, rank and ladder title to match; changing **Level** sets rank and title; changing **Rank / Job title** sets the level. Leads and Managers keep their rank and title. **Fit to pay · N** now lists everyone whose level, tier, rank or title doesn’t match their pay (not just people outside the band).
+
+
+Team Leveling roster sorts by **Title** by default: team, then rank (Manager → Annotator 1), then level (highest first), then tier (Elite → Pro → Prime). Click any other column to sort by it; click Title again to flip.

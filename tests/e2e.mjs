@@ -436,10 +436,12 @@ step("9a5. 1st / 2nd chair and Senior spelling");
 step("9a6. Fit level, tier, rank and title to pay");
 { const { lvFit, lvLadderTitle } = await import("./api/_lib.js");
   const w = lvFit(25000, "Annotator 1"), d = lvFit(28500, "Junior Annotator"), m = lvFit(35000, "Lead"), c = lvFit(18000, null);
-  ok(w.level === "2.5" && w.tier === "Elite" && lvLadderTitle(null, "CS", w.rank) === "CSR 4", `₱25,000 → Level 2.5 · Elite · CSR 4 (${w.level} ${w.tier} ${lvLadderTitle(null, "CS", w.rank)})`);
+  ok(w.level === "3" && w.tier === "Prime" && lvLadderTitle(null, "CS", w.rank) === "CSR 5", `₱25,000 → Level 3 · Prime · CSR 5 (a band starts at its low number) (${w.level} ${w.tier})`);
   ok(d.level === "3.5" && d.tier === "Prime" && lvLadderTitle(null, "CS", d.rank) === "Junior CSR", "₱28,500 → Level 3.5 · Prime · Junior CSR");
-  ok(m.level === "4" && m.tier === "Pro" && m.rank === "Lead" && lvLadderTitle(null, "CS", m.rank) === "CS Lead", "₱35,000 Lead → Level 4 · Pro, stays CS Lead");
-  ok(c.level === "1.5" && c.tier === "Prime" && lvLadderTitle(null, "CS", c.rank) === "CSR 2", "₱18,000 → Level 1.5 · Prime · CSR 2"); }
+  ok(m.level === "4" && m.tier === "Elite" && m.rank === "Lead" && lvLadderTitle(null, "CS", m.rank) === "CS Lead", "₱35,000 Lead → Level 4 · Elite, stays CS Lead");
+  ok(c.level === "1.5" && c.tier === "Pro" && lvLadderTitle(null, "CS", c.rank) === "CSR 2", "₱18,000 → Level 1.5 · Pro · CSR 2");
+  const e = lvFit(16500, null), f = lvFit(17000, null);
+  ok(e.level === "1" && e.tier === "Elite" && f.level === "1.5" && f.tier === "Prime", "₱16,500 → Level 1 · Elite; ₱17,000 → Level 1.5 · Prime"); }
 
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });

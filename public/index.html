@@ -2760,7 +2760,7 @@ dialog::backdrop{background:var(--scrim)}
     D.members.forEach(m => { const x = LVS[m.name]; if (!x) return; m.rank = x[0]; m.rung = Math.round((Number(x[1]) - 1) * 2); m.tier = x[2]; m.payCurrent = PAYROLL[(m.email || "").toLowerCase()] || x[3]; m.levelNotes = x[4] || ""; });
     // CS: level, tier, rank and title fitted to payroll pay (same as the one-time step on deploy)
     { const bands = lvDefBands(), asc = LV_LEVELS.slice().reverse(), lad = lvDefLadder();
-      D.members.filter(m => (m.dept === "CS" || /^Elaine Joy/.test(m.name)) && m.payCurrent).forEach(m => { const pay = m.payCurrent, level = asc.find(l => pay <= bands[l].Elite[1]) || "7", t = ["Prime", "Pro", "Elite"].find(x => pay <= bands[level][x][1]) || "Elite";
+      D.members.filter(m => (m.dept === "CS" || /^Elaine Joy/.test(m.name)) && m.payCurrent).forEach(m => { const pay = m.payCurrent; let level = "1"; for (const l of asc) if (pay >= bands[l].Prime[0]) level = l; let t = "Prime"; for (const x of ["Prime", "Pro", "Elite"]) if (pay >= bands[level][x][0]) t = x;
         const rank = ["Lead", "Manager"].includes(m.rank) ? m.rank : (Object.keys(LV_RANK_LEVEL).find(k => LV_RANK_LEVEL[k] === level && !["Lead", "Manager"].includes(k)) || "Senior Annotator");
         m.rung = lvRung(level); m.tier = t; m.rank = rank; if (m.dept === "CS") m.jobTitle = m.jobTitleSeed = lad.CS[rank] || m.jobTitleSeed || m.jobTitle; }); }
     D.members.forEach(m => { if (m.name === "Ehm Crucillo" || m.name === "Peds Magat") m.rank = "Senior Annotator"; });   // as in Team Leveling
@@ -4967,14 +4967,19 @@ dialog::backdrop{background:var(--scrim)}
   // Suggested level for each rank on the job ladder (used for “suggested pay” and to show which titles fit a band)
   const LV_RANK_LEVEL = { "Annotator 1": "1", "Annotator 2": "1.5", "Annotator 3": "2", "Annotator 4": "2.5", "Annotator 5": "3", "Junior Annotator": "3.5", "Senior Annotator": "4", "Lead": "4.5", "Manager": "5" };
   // Level / tier / rank / title that fit someone’s pay: the lowest level whose band reaches it (Leads and Managers keep their rank)
-  const lvFit = p => { const bands = lv.bands || lvDefBands(), pay = Number(p.payNew || p.payCurrent) || 0, asc = LV_LEVELS.slice().reverse();
-    const level = asc.find(l => bands[l] && pay <= bands[l].Elite[1]) || "7", b = bands[level], tier = ["Prime", "Pro", "Elite"].find(t => pay <= b[t][1]) || "Elite";
+  // A band starts at its low number: ₱16,500 at Level 1 is Elite (16,500–17,000); ₱17,000 is Level 1.5 Prime.
+  const lvFit = (p, payOverride) => { const bands = lv.bands || lvDefBands(), pay = Number(payOverride ?? (p.payNew || p.payCurrent)) || 0, asc = LV_LEVELS.slice().reverse();
+    let level = "1"; for (const l of asc) if (bands[l] && pay >= bands[l].Prime[0]) level = l;
+    const b = bands[level]; let tier = "Prime"; for (const t of ["Prime", "Pro", "Elite"]) if (pay >= b[t][0]) tier = t;
     const rank = ["Lead", "Manager"].includes(p.rank) ? p.rank : (Object.keys(LV_RANK_LEVEL).find(k => LV_RANK_LEVEL[k] === level && !["Lead", "Manager"].includes(k)) || "Senior Annotator");
     return { rung: lvRung(level), tier, rank, jobTitle: (lv.ladder || lvDefLadder())[p.dept]?.[rank] || p.jobTitle, level }; };
+  // someone whose level / tier / rank / title doesn’t match their pay (Leads and Managers keep their title)
+  const lvNeedsFit = p => { if (!(p.payNew || p.payCurrent)) return false; const f = lvFit(p);
+    return f.rung !== p.rung || f.tier !== p.tier || (!["Lead", "Manager"].includes(p.rank) && (f.rank !== p.rank || (f.jobTitle && f.jobTitle !== p.jobTitle))); };
   const lvLevel = rung => rung == null ? "" : String(1 + rung / 2);               // rung 8 ↔ Level 5
   const lvRung = lvl => lvl === "" || lvl == null ? null : Math.round((Number(lvl) - 1) * 2);
   const lvPeso = n => n == null || n === "" ? "—" : "₱" + Number(n).toLocaleString();
-  const lv = { rows: [], bands: null, ladder: null, canEditAll: false, tab: "roster", q: "", dept: "All", rank: "All", change: "all", open: new Set(), sort: { k: "pay", dir: -1 }, at: 0, loading: false, err: "" };
+  const lv = { rows: [], bands: null, ladder: null, canEditAll: false, tab: "roster", q: "", dept: "All", rank: "All", change: "all", open: new Set(), sort: { k: "title", dir: 1 }, at: 0, loading: false, err: "" };
   const lvBand = p => { const b = (lv.bands || lvDefBands())[lvLevel(p.rung)]; return b && p.tier ? b[p.tier] : null; };
   const lvOut = p => { const b = lvBand(p), v = p.payNew || p.payCurrent; return !!(b && v && (v < b[0] || v > b[1])); };
   const lvUp = p => p.payNew && p.payCurrent && p.payNew > p.payCurrent;
@@ -5013,7 +5018,10 @@ dialog::backdrop{background:var(--scrim)}
         && (!q || `${p.name} ${p.jobTitle || ""}`.toLowerCase().includes(q))
         && (lv.change === "all" || (lv.change === "up" ? lvUp(p) : lv.change === "steady" ? !lvUp(p) : lv.change === "out" ? lvOut(p) : (p.bonus || 0) > 0)));
       const key = { name: p => p.name.toLowerCase(), dept: p => p.dept || "", title: p => (p.jobTitle || "").toLowerCase(), level: p => p.rung ?? -1, tier: p => ["Prime", "Pro", "Elite"].indexOf(p.tier), mgr: p => (memberById(p.managerId)?.name || "").toLowerCase(), pay: p => p.payCurrent || 0, newpay: p => p.payNew || 0, change: p => (p.payNew || p.payCurrent || 0) - (p.payCurrent || 0), bonus: p => p.bonus || 0 }[lv.sort.k];
-      list = list.slice().sort((a, b) => { const A = key(a), B = key(b); return (A < B ? -1 : A > B ? 1 : 0) * lv.sort.dir || a.name.localeCompare(b.name); });
+      // Title (default): team, then rank (Manager → Annotator 1), then level (high first), then tier (Elite → Pro → Prime)
+      const byTitle = (a, b) => deptRank(a.dept) - deptRank(b.dept) || rankIdx(a) - rankIdx(b) || (b.rung ?? -1) - (a.rung ?? -1) || tierRankOf(a) - tierRankOf(b) || a.name.localeCompare(b.name);
+      if (lv.sort.k === "title") list = list.slice().sort((a, b) => byTitle(a, b) * lv.sort.dir);
+      else list = list.slice().sort((a, b) => { const A = key(a), B = key(b); return (A < B ? -1 : A > B ? 1 : 0) * lv.sort.dir || (b.rung ?? -1) - (a.rung ?? -1) || tierRankOf(a) - tierRankOf(b) || a.name.localeCompare(b.name); });
       const depts = [...new Set(rows.map(p => p.dept).filter(Boolean))];
       const stats = [["Headcount", rows.length, "in the plan"], ["Teams", depts.length, "represented"], ["Moving up", rows.filter(lvUp).length, `${rows.length ? Math.round(rows.filter(lvUp).length / rows.length * 100) : 0}% of the team`, "g"], ["Holding steady", rows.filter(p => !lvUp(p)).length, "no change this cycle"], ["Outside band", rows.filter(lvOut).length, "pay needs a look", rows.filter(lvOut).length ? "a" : ""]];
       const th = (k, l, cls = "") => `<th class="${cls}"><button class="rvsort ${lv.sort.k === k ? "on" : ""}" data-lvsort="${k}">${l}${lv.sort.k === k ? (lv.sort.dir > 0 ? " ↑" : " ↓") : ""}</button></th>`;
@@ -5047,7 +5055,7 @@ dialog::backdrop{background:var(--scrim)}
           <span class="grow"></span>
           ${admin ? `<button class="btn sm" data-lvbulk="newToCurrent" title="Make everyone’s new pay their current pay">New pay → current</button><button class="btn sm" data-lvbulk="clearNew">Clear new pay</button><button class="btn sm" data-lvbulk="clearBonus">Clear bonuses</button><button class="btn sm" id="lvImport">Import CSV</button>` : ""}
           <button class="btn sm" id="lvExport">Export CSV</button>
-          ${(() => { const n = list.filter(p => lvOut(p) && (p.payNew || p.payCurrent)).length; return n ? `<button class="btn sm primary" id="lvFit" title="Set level, tier, rank and title to match pay, for the people shown who are outside their band">Fit to pay · ${n}</button>` : ""; })()}</div>
+          ${(() => { const n = list.filter(lvNeedsFit).length; return n ? `<button class="btn sm primary" id="lvFit" title="Set level, tier, rank and title to match pay for the people shown whose level or tier doesn’t match it">Fit to pay · ${n}</button>` : ""; })()}</div>
         <div class="deptbar lvteams" role="group" aria-label="Team">${["All", ...DEPTS.map(([d]) => d).filter(d => rows.some(p => p.dept === d))].map(d => { const n = d === "All" ? rows.length : rows.filter(p => p.dept === d).length;
           return `<button class="dpill ${lv.dept === d ? "on" : ""}" data-lvdept="${esc(d)}" style="--c:${d === "All" ? "var(--text)" : deptColor(d)}">${d === "All" ? "" : "<i></i>"}${d === "All" ? "All teams" : esc(d)}<span>${n}</span></button>`; }).join("")}</div>
         <div class="tablewrap flat"><table class="ttable lvtable"><thead><tr>${th("name", "Name")}${th("dept", "Team")}${th("title", "Title")}${th("level", "Level")}${th("tier", "Tier")}${th("mgr", "Reports to")}${th("pay", "Current", "num")}${th("newpay", "New", "num")}${th("change", "Change", "num")}${th("bonus", "Bonus", "num")}</tr></thead><tbody>
@@ -5108,6 +5116,13 @@ dialog::backdrop{background:var(--scrim)}
         if (k === "rung") v = v === "" ? null : +v; else if (["payCurrent", "payNew", "bonus"].includes(k)) v = v.replace(/[^\d]/g, "") === "" ? null : +v.replace(/[^\d]/g, "");
         else if (k === "managerId") v = v || null;
         if (k === "jobTitle") lv.customTitle = null;
+        if ((k === "payCurrent" || k === "payNew") && v) {
+          const f = lvFit({ ...p, [k]: v });
+          const extra = { rung: f.rung, tier: f.tier, ...(["Lead", "Manager"].includes(p.rank) ? {} : { rank: f.rank, jobTitle: f.jobTitle }) };
+          lvSave(p, { [k]: v, ...extra }, `${p.name.split(" ")[0]}: ${lvPeso(v)} → Level ${f.level} · ${f.tier}${extra.jobTitle ? " · " + extra.jobTitle : ""}`).then(renderLeveling); return; }
+        if (k === "rung" && v != null && !["Lead", "Manager"].includes(p.rank)) {
+          const L = lvLevel(v), r2 = Object.keys(LV_RANK_LEVEL).find(x => LV_RANK_LEVEL[x] === L && !["Lead", "Manager"].includes(x)) || (Number(L) >= 4 ? "Senior Annotator" : p.rank), t2 = r2 && (lv.ladder || lvDefLadder())[p.dept]?.[r2];
+          lvSave(p, { rung: v, ...(r2 ? { rank: r2 } : {}), ...(t2 ? { jobTitle: t2 } : {}) }, `${p.name.split(" ")[0]}: Level ${L}${t2 ? " · " + t2 : ""}`).then(renderLeveling); return; }
         if (k === "rank" && v) { const t = (lv.ladder || lvDefLadder())[p.dept]?.[v], L = LV_RANK_LEVEL[v];
           lvSave(p, { rank: v, ...(t ? { jobTitle: t } : {}), ...(L ? { rung: lvRung(L), tier: p.tier || "Prime" } : {}) }, `${p.name.split(" ")[0]}: ${t || v}${L ? ` · Level ${L}` : ""}`).then(renderLeveling); return; }
         if (k === "dept") { const t = p.rank && (lv.ladder || lvDefLadder())[v]?.[p.rank]; if (t) { lvSave(p, { dept: v, jobTitle: t }, `${p.name.split(" ")[0]} → ${v} · ${t}`).then(renderLeveling); return; } }
@@ -5133,7 +5148,7 @@ dialog::backdrop{background:var(--scrim)}
       dataCall({ op: "levelingConfig", bands: nb }).then(() => { toast("Band saved"); renderLeveling(); }).catch(e => toast(e.message)); });
     const fitBtn = B.querySelector("#lvFit"); if (fitBtn) fitBtn.onclick = async () => {
       const q0 = lv.q.trim().toLowerCase();
-      const todo = rows.filter(p => (lv.dept === "All" || p.dept === lv.dept) && (lv.rank === "All" || p.rank === lv.rank) && (!q0 || `${p.name} ${p.jobTitle || ""}`.toLowerCase().includes(q0)) && lvOut(p) && (p.payNew || p.payCurrent));
+      const todo = rows.filter(p => (lv.dept === "All" || p.dept === lv.dept) && (lv.rank === "All" || p.rank === lv.rank) && (!q0 || `${p.name} ${p.jobTitle || ""}`.toLowerCase().includes(q0)) && lvNeedsFit(p));
       const lines = todo.map(p => { const f = lvFit(p); return `${p.name}: ${lvPeso(p.payNew || p.payCurrent)} → Level ${f.level} · ${f.tier} · ${f.jobTitle}`; });
       if (!await askConfirm(`Fit ${todo.length} ${todo.length === 1 ? "person" : "people"} to their pay?\n\n${lines.slice(0, 14).join("\n")}${lines.length > 14 ? `\n…and ${lines.length - 14} more` : ""}`, "Fit to pay")) return;
       for (const p of todo) { const f = lvFit(p); await lvSave(p, { rung: f.rung, tier: f.tier, rank: f.rank, jobTitle: f.jobTitle }); }
@@ -7337,7 +7352,7 @@ ${others.map(m => m.name).join(", ")} will report to ${L.name.split(" ")[0]}.`, 
   function chairSlot(m, n) {
     const { W, H } = ORG, teams = chairTeams(m); if (!teams.length) return "";
     if (!isOpen(m.id) && activeMembers().some(x => x.managerId === m.id)) return "";   // branch closed: no room under the card
-    if (!ORG.edit && chairNum(m) !== 1) return "";                                     // outside Edit: only under 1st chairs
+    if (!ORG.edit) return "";   // outside Edit the badges on each card already show the 2nd / 3rd chairs; these are drop slots for Edit mode
     const chips = teams.flatMap(d => [2, 3].map(seat => ({ d, seat, p: seatOf(m.id, d || null, seat) })));
     const cw = 118, gap = 6, total = chips.length * cw + (chips.length - 1) * gap, x0 = n.x + W / 2 - total / 2;
     return chips.map((c, i) => { const multi = teams.length > 1, nm = c.p ? c.p.name.split(" ")[0] : "Open", ord = c.seat === 2 ? "2nd" : "3rd";
