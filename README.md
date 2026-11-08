@@ -388,3 +388,6 @@ Team Leveling roster sorts by **Title** by default: team, then rank (Manager →
 
 
 Review cycle table: team pills (All teams · Managers · Analysts · Review · Grading · Data · Recomp · Items · Community · CS) filter the list; the ★ counts follow the team picked.
+
+
+**Employee of the Month by month:** **⭐ Pick Employee of the Month** (Alan / Karl) has a **Month** picker — choose any month and one person. This month’s winner gets the EOM badge; earlier months show under the bar as **Past winners** (newest first, × to remove). Stored as `settings.eom_history` ({ "YYYY-MM": memberId }); an EOM picked the old way is carried over once on deploy.

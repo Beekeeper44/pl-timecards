@@ -255,6 +255,11 @@ async function migrate() {
     const [sb] = await sql`insert into settings (key, value) values ('special_badges_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (sb) { await sql`update members set badges = array['director'] where job_title ilike '%director%'`.catch(() => {});
       await sql`update members set badges = array['manager'] where job_title ~* '\mmanager\M' and job_title not ilike '%director%' and name not in ('Ehm Crucillo', 'Peds Magat')`.catch(() => {}); }
+    // One-time: carry an Employee of the Month picked the old way (one person) into the month-by-month history
+    const [eh] = await sql`insert into settings (key, value) values ('eom_hist_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
+    if (eh) { const [old] = await sql`select value from settings where key = 'eom'`;
+      if (old?.value?.memberId) { const mo = old.value.month || new Date().toISOString().slice(0, 7);
+        await sql`insert into settings (key, value) values ('eom_history', ${JSON.stringify({ [mo]: old.value.memberId })}::jsonb) on conflict (key) do nothing`; } }
     // One-time: nobody is Employee of the Month yet
     const [eo] = await sql`insert into settings (key, value) values ('eom_clear_v1', 'true'::jsonb) on conflict (key) do nothing returning key`;
     if (eo) await sql`delete from settings where key = 'eom'`.catch(() => {});

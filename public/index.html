@@ -1346,6 +1346,9 @@ div.tctable.muted{opacity:.55}
 .minimedal{display:inline-block;vertical-align:-7px;margin-left:6px} .minimedal .medal{display:inline-block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
 .bigbadges{display:flex;gap:8px;align-items:flex-end;margin-right:10px;flex:none} .bigbadges figure{margin:0;display:grid;justify-items:center;gap:2px} .bigbadges figcaption{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text)}
 .bigbadges .medal{filter:drop-shadow(0 4px 10px rgba(0,0,0,.55))}
+.eomhist{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-6px 0 14px} .eomhist .hl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.eomh{display:inline-flex;align-items:center;gap:8px;padding:5px 8px 5px 6px;border:1px solid var(--line2);border-radius:999px;background:var(--panel)} .eomh small{display:block;font-size:11px;color:#f2c94c;font-weight:700} .eomh b{font-size:13px} .eomh a{color:var(--text);text-decoration:none} .eomh a:hover{text-decoration:underline}
+.eomonth{display:grid;gap:4px;font-size:13px;color:var(--muted);margin:4px 0 8px} .eomonth input{max-width:220px}
 .eombar{display:flex;align-items:center;gap:16px;padding:14px 18px;margin:0 0 14px;border:1px solid color-mix(in srgb,#f2c94c 45%,var(--line));border-radius:14px;background:color-mix(in srgb,#f2c94c 6%,var(--panel))}
 .eombar .wtitle{font-size:16px} .eommo{font-weight:600;color:#f2c94c;margin-left:6px} .eomwho{display:inline-flex;align-items:center;gap:10px;margin-top:6px;text-decoration:none;color:var(--text)} .eomwho small{color:var(--muted)} .eompick{margin-left:auto}
 .chsub{font-size:13px;font-weight:700;margin:6px 0 6px} .chsub small{font-weight:500;color:var(--muted)} .chspecial{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -2390,7 +2393,8 @@ dialog::backdrop{background:var(--scrim)}
 <dialog id="dlgEom">
   <form class="dlg" method="dialog">
     <h2>Employee of the Month</h2>
-    <div class="note" style="color:var(--text)">Pick one person. They get the EOM badge on their time card, profile and the org chart, and ⭐ next to their name.</div>
+    <div class="note" style="color:var(--text)">Pick the month and one person. This month’s winner gets the EOM badge on their time card, profile and the org chart; past months are kept as history.</div>
+    <label class="eomonth">Month<input class="field" type="month" id="eoMonth"></label>
     <input class="field" id="eoQ" placeholder="Search name">
     <div id="eoList" class="lalist"></div>
     <div class="btns"><button class="btn" value="clear" formnovalidate>Clear</button><span class="grow"></span><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div>
@@ -2963,7 +2967,7 @@ dialog::backdrop{background:var(--scrim)}
         meetings: (D.meetings || []).filter(x => admin || x.managerId === D.meId || x.memberId === D.meId).map(x => ({ ...JSON.parse(JSON.stringify(x)), privateNotes: admin || x.managerId === D.meId ? x.privateNotes : null })),
         cycles: (D.cycles || []).map(x => ({ ...x })),
         deleted: admin ? (D.deleted || []).map(x => ({ ...x })) : [],
-        demoOnLogin: !!D.demoOnLogin, eom: D.eom || null, levelingOn: (D.lvAccess || D.members.filter(m => m.name === "Alan Bailey" || m.name === "Karl Calma").map(m => m.id)).includes(D.meId), swapEvRecomp: D.swapEv !== false, idleSignout: D.idleSignout || 0, reviewQuestions: D.reviewQuestions || null, metricsTeams: { ...(D.metricsTeams || {}) },
+        demoOnLogin: !!D.demoOnLogin, eomHistory: D.eomHist || {}, eom: (D.eomHist || {})[dayKey(Date.now()).slice(0, 7)] ? { memberId: D.eomHist[dayKey(Date.now()).slice(0, 7)], month: dayKey(Date.now()).slice(0, 7) } : null, levelingOn: (D.lvAccess || D.members.filter(m => m.name === "Alan Bailey" || m.name === "Karl Calma").map(m => m.id)).includes(D.meId), swapEvRecomp: D.swapEv !== false, idleSignout: D.idleSignout || 0, reviewQuestions: D.reviewQuestions || null, metricsTeams: { ...(D.metricsTeams || {}) },
         announcements: (D.announcements = (D.announcements || []).filter(x => x.at > Date.now() - 7 * 86400000)).map(x => ({ ...x })),
         reviews: (D.reviews || []).filter(r => admin || r.memberId === D.meId || r.reviewerId === D.meId).map(r => { const full = admin || r.reviewerId === D.meId || r.status === "shared"; return { ...r, rating: full ? r.rating : null, strengths: full ? r.strengths : null, growth: full ? r.growth : null, goals: full ? r.goals : null, recs: admin || r.reviewerId === D.meId ? { ...(r.recs || {}) } : null }; }),
         updates: (D.pupdates || []).filter(u => admin || u.authorId === D.meId || (u.memberId === D.meId && u.shared) || D.members.find(x => x.id === u.memberId)?.managerId === D.meId).sort((a, b) => b.at - a.at).map(u => ({ ...u })),
@@ -3077,7 +3081,7 @@ dialog::backdrop{background:var(--scrim)}
         return { ok: true };
       }
       case "setBadge": { const m0 = D.members.find(x => x.id === b.id); const set = new Set(m0.badges || []); b.on ? set.add(b.badge) : set.delete(b.badge); m0.badges = [...set]; return { ok: true }; }
-      case "setEom": D.eom = b.id ? { memberId: b.id, month: b.month || null } : null; return { ok: true };
+      case "setEom": { D.eomHist = D.eomHist || {}; if (b.id) D.eomHist[b.month] = b.id; else delete D.eomHist[b.month]; return { ok: true }; }
       case "orgChair1": { const m0 = D.members.find(x => x.id === b.id); if (!m0) derr(404, "Not found"); m0.chair1 = !!b.on; if (b.on) { m0.chair2Of = m0.chair2Dept = m0.chair3Of = m0.chair3Dept = null; } return { ok: true }; }
       case "orgChair": { const m0 = D.members.find(x => x.id === b.id); if (!m0) derr(404, "Not found");
         const k = +b.seat === 3 ? "chair3" : "chair2";
@@ -3189,7 +3193,7 @@ dialog::backdrop{background:var(--scrim)}
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
     if (lv.rows.length && d.members && d.members.filter(x => x.active).length !== lv.rows.length + 1) lv.at = 0;   // someone added or removed: Team Leveling reloads
-    eomNow = d.eom || null; levelingOn = !!d.levelingOn; swapEvRecomp = d.swapEvRecomp !== false; applyReviewQuestions(d.reviewQuestions); idleMin = +d.idleSignout || 0; deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxSaved = { ...(d.metricsTeams || {}) }; mxTeams = { ...MX_TEAM_DEFAULTS, ...mxSaved }; me = d.me; members = d.members;
+    eomNow = d.eom || null; eomHist = d.eomHistory || {}; levelingOn = !!d.levelingOn; swapEvRecomp = d.swapEvRecomp !== false; applyReviewQuestions(d.reviewQuestions); idleMin = +d.idleSignout || 0; deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxSaved = { ...(d.metricsTeams || {}) }; mxTeams = { ...MX_TEAM_DEFAULTS, ...mxSaved }; me = d.me; members = d.members;
     if (!DEMO && me && me.role === "admin" && members.length < 5 && !autoImportTried) { autoImportTried = true; setTimeout(autoImportTeam, 0); } live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
@@ -6908,7 +6912,7 @@ dialog::backdrop{background:var(--scrim)}
   const medal = (n, size = 28, team) => badgeImg(BADGES[`${n}-${team}`] || BADGE[n], `${["", "1st", "2nd", "3rd"][n]} chair${team && BADGES[`${n}-${team}`] ? " · " + team : ""}`, size);
   const chairTeam = (m, n) => n === 2 ? (m.chair2Dept || m.dept) : n === 3 ? (m.chair3Dept || m.dept) : m.dept;
   // Special tiers: Director (title says Director), Manager (rank or title Manager), EOM (Employee of the Month)
-  let eomNow = null;
+  let eomNow = null, eomHist = {};
   const isDirector = m => (m?.badges || []).includes("director");
   const isManagerTier = m => (m?.badges || []).includes("manager");
   // Big badges for a person’s time card / profile header (everything they hold, large)
@@ -6958,7 +6962,7 @@ dialog::backdrop{background:var(--scrim)}
       const eom1 = $("chEom").checked, dir1 = $("chDir").checked, mgr1 = $("chMgr").checked;
       if (levelingOn && (dir1 !== dir0 || mgr1 !== mgr0)) { try { if (dir1 !== dir0) await dataCall({ op: "setBadge", id, badge: "director", on: dir1 }); if (mgr1 !== mgr0) await dataCall({ op: "setBadge", id, badge: "manager", on: mgr1 });
         toast("Badges saved"); if (ch === ch0 && eom1 === eom0) { await load(); renderAll(); } } catch (e) { toast(e.message); } }
-      if (levelingOn && eom1 !== eom0) { try { await dataCall({ op: "setEom", id: eom1 ? id : null, month: today.slice(0, 7) }); toast(eom1 ? `⭐ ${m.name.split(" ")[0]} is Employee of the Month` : "Employee of the Month cleared"); if (ch === ch0) { await load(); renderAll(); } } catch (e) { toast(e.message); } }
+      if (levelingOn && eom1 !== eom0) { try { await dataCall({ op: "setEom", id: eom1 ? id : (eomNow?.memberId === id ? null : eomNow?.memberId || null), month: today.slice(0, 7) }); toast(eom1 ? `⭐ ${m.name.split(" ")[0]} is Employee of the Month` : "Employee of the Month cleared"); if (ch === ch0) { await load(); renderAll(); } } catch (e) { toast(e.message); } }
       if (ch === ch0) return;
       try { if (ch === "1") await dataCall({ op: "orgChair1", id, on: true });
         else if (ch === "2" || ch === "3") await dataCall({ op: "orgChair", id, leaderId: m.managerId, dept: m.dept, seat: +ch });
@@ -7486,17 +7490,24 @@ ${others.map(m => m.name).join(", ")} will report to ${L.name.split(" ")[0]}.`, 
         </div></div>`;
     }
     const eomM = eomNow ? memberById(eomNow.memberId) : null;
-    const eomBar = `<div class="eombar">${badgeImg(BADGES.EOM, "Employee of the Month", 64)}<div><div class="wtitle">Employee of the Month${eomNow?.month ? ` <span class="eommo">${esc(new Date(eomNow.month + "-01T12:00:00Z").toLocaleString("en-US", { month: "long", year: "numeric" }))}</span>` : ""}</div>
+    const monthName = mo => new Date(mo + "-01T12:00:00Z").toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+    const past = Object.entries(eomHist).filter(([mo]) => mo !== today.slice(0, 7)).sort((a, b) => b[0].localeCompare(a[0]));
+    const eomBar = `<div class="eombar">${badgeImg(BADGES.EOM, "Employee of the Month", 64)}<div><div class="wtitle">Employee of the Month <span class="eommo">${esc(monthName(today.slice(0, 7)))}</span></div>
       ${eomM ? `<a class="eomwho" href="#profile-${eomM.id}">${avatar(eomM)}<b>${esc(eomM.name)}</b><small>${esc(jobTitleOf(eomM) || eomM.dept)}</small></a>` : `<span class="dim">Not picked yet</span>`}</div>
-      ${levelingOn ? `<button class="fpill on eompick" id="eomPick">⭐ ${eomM ? "Change" : "Pick"} Employee of the Month</button>` : ""}</div>`;
+      ${levelingOn ? `<button class="fpill on eompick" id="eomPick">⭐ Pick Employee of the Month</button>` : ""}</div>
+      ${past.length ? `<div class="eomhist"><span class="hl">Past winners</span>${past.map(([mo, id]) => { const x = memberById(id); return `<span class="eomh">${badgeImg(BADGES.EOM, "EOM", 26)}<span><small>${esc(monthName(mo))}</small><b>${x ? `<a href="#profile-${x.id}">${esc(x.name)}</a>` : "Left the team"}</b></span>${levelingOn ? `<button class="ochx" data-eomdel="${mo}" title="Remove ${esc(monthName(mo))}">×</button>` : ""}</span>`; }).join("")}</div>` : ""}`;
     $("talentBody").innerHTML = eomBar + ladder + table;
+    $("talentBody").querySelectorAll("[data-eomdel]").forEach(b => b.onclick = async () => { const mo = b.dataset.eomdel; if (!(await askConfirm(`Remove the Employee of the Month for ${monthName(mo)}?`, "Remove"))) return;
+      try { await dataCall({ op: "setEom", id: null, month: mo }); toast("Removed"); await load(); renderAll(); } catch (e) { toast(e.message); } });
     const ep = $("eomPick"); if (ep) ep.onclick = () => {
-      const d = $("dlgEom"), list = activeMembers().slice().sort(teamOrder); let pick = eomNow?.memberId || null;
+      const d = $("dlgEom"), list = activeMembers().slice().sort(teamOrder); $("eoMonth").value = today.slice(0, 7); let pick = eomHist[today.slice(0, 7)] || null;
+      $("eoMonth").onchange = () => { pick = eomHist[$("eoMonth").value] || null; draw($("eoQ").value); };
       const draw = (q = "") => { $("eoList").innerHTML = list.filter(x => !q || x.name.toLowerCase().includes(q.toLowerCase())).map(x => `<label class="larow ${pick === x.id ? "on" : ""}"><input type="radio" name="eopick" value="${x.id}" ${pick === x.id ? "checked" : ""}>${avatar(x)}<span class="lawho"><b>${esc(x.name)}</b><small><span style="color:${deptColor(x.dept)}">${esc(x.dept)}</span> · ${esc(jobTitleOf(x) || "")}</small></span></label>`).join("");
         $("eoList").querySelectorAll("input").forEach(r => r.onchange = () => { pick = r.value; $("eoList").querySelectorAll(".larow").forEach(l => l.classList.toggle("on", l.querySelector("input").checked)); }); };
       $("eoQ").value = ""; $("eoQ").oninput = e => draw(e.target.value); draw(); d.returnValue = ""; d.showModal();
       d.addEventListener("close", async () => { if (d.returnValue === "clear") pick = null; else if (d.returnValue !== "ok") return;
-        try { await dataCall({ op: "setEom", id: pick, month: today.slice(0, 7) }); toast(pick ? `⭐ ${memberById(pick).name.split(" ")[0]} is Employee of the Month` : "Employee of the Month cleared"); await load(); renderAll(); } catch (e) { toast(e.message); } }, { once: true }); };
+        const mo = $("eoMonth").value || today.slice(0, 7);
+        try { await dataCall({ op: "setEom", id: pick, month: mo }); toast(pick ? `⭐ ${memberById(pick).name.split(" ")[0]} is Employee of the Month · ${monthName(mo)}` : `${monthName(mo)} cleared`); await load(); renderAll(); } catch (e) { toast(e.message); } }, { once: true }); };
     if (!admin) return;
     renderFilters($("talentFilters"), renderTalent, false);
     const B = $("talentBody");
@@ -7999,7 +8010,7 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   const SH = { el: null, src: null, sig: "", raf: 0 };
   function shTargets() {
     const v = document.querySelector("main section:not([hidden])") || document;
-    const heads = [...v.querySelectorAll(".tlwrap .tlhead"), ...[...v.querySelectorAll("table")].filter(t => t.tBodies[0] && t.tBodies[0].rows.length >= 8).map(t => t.tHead).filter(Boolean)];
+    const heads = [...v.querySelectorAll(".tlwrap .tlhead"), ...[...v.querySelectorAll("table")].filter(t => t.tBodies[0] && t.tBodies[0].rows.length >= 5).map(t => t.tHead).filter(Boolean)];
     return heads.filter(h => h.offsetParent !== null && !h.closest(".lvsolo,dialog"));
   }
   function shUpdate() {
@@ -8034,7 +8045,7 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   const shSchedule = () => { if (!SH.raf) SH.raf = requestAnimationFrame(shUpdate); };
   window.addEventListener("scroll", shSchedule, { passive: true });
   window.addEventListener("resize", () => { SH.sig = ""; shSchedule(); });
-  document.addEventListener("scroll", e => { if (e.target !== document && e.target.closest && e.target.closest(".tlwrap,.tablewrap")) shSchedule(); }, { capture: true, passive: true });
+  document.addEventListener("scroll", shSchedule, { capture: true, passive: true });   // the page, or any box that scrolls
   new MutationObserver(() => { SH.sig = ""; shSchedule(); }).observe(document.querySelector("main") || document.body, { childList: true, subtree: true });
   // ---------- boot ----------
   $("authLogo").src = document.querySelector(".logo").src;

@@ -289,14 +289,16 @@ export default async function handler(req, res) {
       timeline = timelineRows; myMonth = myMonthRows;
       const schedToday = Object.fromEntries(schedRows.map(r => [r.memberId, r.codes]));
       const levelingOn = await canLevel();
-      const eom = (await sql`select value from settings where key = 'eom'`)[0]?.value || null;   // Employee of the Month { memberId, month }
+      // Employee of the Month: one person per month ({ "2026-11": memberId, … }); the badge goes to this month’s pick
+      const eomHistory = (await sql`select value from settings where key = 'eom_history'`)[0]?.value || {};
+      const thisMonth = today.slice(0, 7), eom = eomHistory[thisMonth] ? { memberId: eomHistory[thisMonth], month: thisMonth } : null;
       const swapEvRecomp = ((await sql`select value from settings where key = 'swap_ev_recomp'`)[0]?.value ?? true) === true;
       const idleSignout = +((await sql`select value from settings where key = 'idle_signout'`)[0]?.value || 0);
       const reviewQuestions = (await sql`select value from settings where key = 'review_questions'`)[0]?.value || null;
       const metricsTeams = (await sql`select value from settings where key = 'metrics_teams'`)[0]?.value || {};
       const demoOnLogin = admin ? ((await sql`select value from settings where key = 'demo_on_login'`)[0]?.value === true) : false;
       const deleted = admin ? ((await sql`select value from settings where key = 'deleted_people'`)[0]?.value || []) : [];
-      return send(res, 200, { levelingOn, eom, swapEvRecomp, idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
+      return send(res, 200, { levelingOn, eom, eomHistory, swapEvRecomp, idleSignout, reviewQuestions, metricsTeams, demoOnLogin, deleted, rev, me, today, now: Date.now(), members, live, week: weekShifts, myWeek, myMonth, timeOff, timeline, schedToday, mySchedule: schedToday[me.id] || [], shift, notifications, meetings: ms, cycles, reviews: rv, updates: ups, announcements });
     }
 
     if (req.method !== "POST") return fail(res, 405, "Method not allowed");
@@ -957,9 +959,12 @@ export default async function handler(req, res) {
       }
       case "setEom": {
         if (!(await canLevel())) return fail(res, 403, "Only Alan and Karl can pick the Employee of the Month.");
-        // Employee of the Month: one person at a time (null clears it)
-        const v = b.id ? { memberId: b.id, month: String(b.month || "").slice(0, 7) || null, at: Date.now() } : null;
-        await sql`insert into settings (key, value) values ('eom', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+        // Employee of the Month for a given month (YYYY-MM): one person per month; id null clears that month
+        const month = /^\d{4}-\d{2}$/.test(String(b.month || "")) ? b.month : null;
+        if (!month) return fail(res, 400, "Pick a month.");
+        const [cur] = await sql`select value from settings where key = 'eom_history'`; const h = { ...(cur?.value || {}) };
+        if (b.id) h[month] = b.id; else delete h[month];
+        await sql`insert into settings (key, value) values ('eom_history', ${JSON.stringify(h)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
         await bumpRev(); return send(res, 200, { ok: true });
       }
       case "orgChair1": {
