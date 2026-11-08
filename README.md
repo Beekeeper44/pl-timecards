@@ -385,3 +385,6 @@ The ② / ③ position tags under a leader only show in Org chart › Edit (as d
 
 
 Team Leveling roster sorts by **Title** by default: team, then rank (Manager → Annotator 1), then level (highest first), then tier (Elite → Pro → Prime). Click any other column to sort by it; click Title again to flip.
+
+
+Review cycle table: team pills (All teams · Managers · Analysts · Review · Grading · Data · Recomp · Items · Community · CS) filter the list; the ★ counts follow the team picked.

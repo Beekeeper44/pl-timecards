@@ -335,6 +335,7 @@ tr.rdetail td{background:var(--panel2);padding:14px 18px}
 .recst.bonus.on{color:#fbbf24;border-color:#f59e0b;background:rgba(245,158,11,.15)}
 .rectags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px} .rectag{font-size:11px;font-weight:700;border-radius:6px;padding:1px 7px}
 .rectag.title{background:rgba(59,130,246,.15);color:#60a5fa} .rectag.comp{background:rgba(16,185,129,.15);color:#34d399} .rectag.bonus{background:rgba(245,158,11,.15);color:#fbbf24}
+.rvteams{margin:0 0 10px;flex-wrap:wrap!important;padding:0!important} .rvteams .dpill{flex:none!important}
 .recbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px} .recbar .hl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .recbar .btn{margin-left:auto}
 .fpill.rec-title.on{border-color:#3b82f6;color:#60a5fa} .fpill.rec-comp.on{border-color:#10b981;color:#34d399} .fpill.rec-bonus.on{border-color:#f59e0b;color:#fbbf24}
@@ -4642,6 +4643,7 @@ dialog::backdrop{background:var(--scrim)}
   const recTags = r => { const t = REC.filter(([k]) => (r.recs || {})[k]).map(([k, , sh]) => `<span class="rectag ${k}">${sh}</span>`).join(""); return t ? `<span class="rectags">${t}</span>` : ""; };
   let recFilter = null;   // ★ filter pill on the cycle table
   let rvSort = { k: null, dir: 1 };   // cycle table sort
+  let rvDept = "All";   // cycle table team pill
   function renderReviews() {
     const admin = isAdmin(); const lead = isLeadUser();
     $("cycleNew").hidden = !admin; $("updNew").hidden = !lead;
@@ -4670,12 +4672,13 @@ dialog::backdrop{background:var(--scrim)}
       const myRows = allRows.filter(x => x.r.reviewerId === me.id);
       const scope = !admin ? "mine" : rvScope || (myRows.length ? "mine" : "all");
       const rows0 = scope === "mine" ? myRows : allRows;
-      const rows = (recFilter ? rows0.filter(x => (x.r.recs || {})[recFilter]) : rows0).slice();
+      const rowsT = rvDept === "All" ? rows0 : rows0.filter(x => x.m.dept === rvDept);   // team pill
+      const rows = (recFilter ? rowsT.filter(x => (x.r.recs || {})[recFilter]) : rowsT).slice();
       // column sort (click a header; again to flip). Team order stays as the tie-break.
       const selfRank = r => selfDone(r) ? 3 : r.selfSentAt ? 2 : 1, mgrRank = r => r.status === "shared" ? 4 : (r.mgrAnswers || []).some(x => x.rating) ? 3 : r.status === "draft" ? 2 : 1;
       const key = { name: x => x.m.name.toLowerCase(), reviewer: x => nm(x.r.reviewerId).toLowerCase(), self: x => selfRank(x.r), mgr: x => mgrRank(x.r), rating: x => mgrAvg(x.r) || 0 }[rvSort.k];
       if (key) rows.sort((a, b) => { const A = key(a), B = key(b); return (A < B ? -1 : A > B ? 1 : 0) * rvSort.dir || teamOrder(a.m, b.m); });
-      const recN = k => rows0.filter(x => (x.r.recs || {})[k]).length;
+      const recN = k => rowsT.filter(x => (x.r.recs || {})[k]).length;
       const shared = rows.filter(x => x.r.status === "shared").length;
       const unsent = rows.filter(x => !x.r.selfSentAt && !selfDone(x.r));
       const ready = rows.filter(x => x.r.status === "draft" && mgrReady(x.r) && (admin || x.r.reviewerId === me.id));
@@ -4699,7 +4702,9 @@ dialog::backdrop{background:var(--scrim)}
             <div><b>${esc(cyc.name)}</b> <span class="dim">· manager votes 1–5 on each</span><ol>${MGR_QS.map(q => `<li>${esc(q)}</li>`).join("")}<li>${esc(EXTRA_Q)} <small>Typed, optional</small></li></ol><small class="dim">1 Needs improvement · 2 Developing · 3 Meets expectations · 4 Exceeds expectations · 5 Exceptional</small></div></div></details>
           <div class="bar"><span style="width:${rows.length ? shared / rows.length * 100 : 0}%"></span></div>
           ${admin ? `<div class="rvscope seg" role="group" aria-label="Show"><button data-rvscope="mine" aria-pressed="${scope === "mine"}">My reviews to do <span class="pill-count">${myRows.length}</span></button><button data-rvscope="all" aria-pressed="${scope === "all"}">Everyone <span class="pill-count">${allRows.length}</span></button></div>` : ""}
-          <div class="recbar"><span class="hl">★ Recommended</span>${[[null, "Everyone", rows0.length], ...REC.map(([k, l]) => [k, l, recN(k)])].map(([k, l, n]) => `<button class="fpill rec-${k || "all"} ${recFilter === k ? "on" : ""}" data-recfilter="${k || ""}">${k ? "★ " : ""}${l}<span>${n}</span></button>`).join("")}
+          <div class="deptbar rvteams" role="group" aria-label="Team">${["All", ...DEPTS.map(([d]) => d).filter(d => rows0.some(x => x.m.dept === d))].map(d => { const n = d === "All" ? rows0.length : rows0.filter(x => x.m.dept === d).length;
+            return `<button class="dpill ${rvDept === d ? "on" : ""}" data-rvdept="${esc(d)}" style="--c:${d === "All" ? "var(--text)" : deptColor(d)}">${d === "All" ? "" : "<i></i>"}${d === "All" ? "All teams" : esc(d)}<span>${n}</span></button>`; }).join("")}</div>
+          <div class="recbar"><span class="hl">★ Recommended</span>${[[null, "Everyone", rowsT.length], ...REC.map(([k, l]) => [k, l, recN(k)])].map(([k, l, n]) => `<button class="fpill rec-${k || "all"} ${recFilter === k ? "on" : ""}" data-recfilter="${k || ""}">${k ? "★ " : ""}${l}<span>${n}</span></button>`).join("")}
             <button class="btn sm" data-recexport title="Everyone with a star, for HR">Export ★ CSV</button></div>
           ${scope === "mine" && !rows.length ? `<div class="empty"><b>No one reports to you in this cycle</b>Switch to Everyone to see the whole team.</div>` : ""}
           <div class="tablewrap flat" style="border:1px solid var(--line);border-radius:10px"><table class="ttable rvtable"><thead><tr>${[["name", "Team member"], ["reviewer", "Reviewer"], ["self", selfName(cyc.name)], ["mgr", cyc.name], ["rating", "Rating"]].map(([k, l]) => `<th><button class="rvsort ${rvSort.k === k ? "on" : ""}" data-rvsort="${k}">${esc(l)}${rvSort.k === k ? (rvSort.dir > 0 ? " ↑" : " ↓") : ""}</button></th>`).join("")}<th></th></tr></thead><tbody>
@@ -4724,6 +4729,7 @@ dialog::backdrop{background:var(--scrim)}
       dataCall({ op: "reviewFlag", id, flag: k, on }).catch(err => { r0.recs[k] = !on; renderReviews(); toast(err.message); }); });
     B.querySelectorAll("[data-rvsort]").forEach(b => b.onclick = () => { const k = b.dataset.rvsort;
       rvSort = rvSort.k === k ? { k, dir: -rvSort.dir } : { k, dir: k === "rating" || k === "self" || k === "mgr" ? -1 : 1 }; renderReviews(); });
+    B.querySelectorAll("[data-rvdept]").forEach(b => b.onclick = () => { rvDept = b.dataset.rvdept; renderReviews(); });
     B.querySelectorAll("[data-recfilter]").forEach(b => b.onclick = () => { recFilter = b.dataset.recfilter || null; renderReviews(); });
     B.querySelectorAll("[data-recexport]").forEach(b => b.onclick = () => {
       const cy = cycles.find(c => c.id === selCycle) || {}, list = reviews.filter(r => r.cycleId === selCycle && r.recs && (r.recs.title || r.recs.comp || r.recs.bonus));
