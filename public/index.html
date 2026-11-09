@@ -3192,9 +3192,11 @@ dialog::backdrop{background:var(--scrim)}
   let lastLoadAt = 0, lastRev = null;
   const CACHE_KEY = "pltc_cache_v1";
   function applyData(d) {
+    if (d.me && (!me || me.id !== d.me.id)) filtersRestoredFor = null;
     if (lv.rows.length && d.members && d.members.filter(x => x.active).length !== lv.rows.length + 1) lv.at = 0;   // someone added or removed: Team Leveling reloads
     eomNow = d.eom || null; eomHist = d.eomHistory || {}; levelingOn = !!d.levelingOn; swapEvRecomp = d.swapEvRecomp !== false; applyReviewQuestions(d.reviewQuestions); idleMin = +d.idleSignout || 0; deletedPeople = d.deleted || []; demoOnLogin = !!d.demoOnLogin; mxSaved = { ...(d.metricsTeams || {}) }; mxTeams = { ...MX_TEAM_DEFAULTS, ...mxSaved }; me = d.me; members = d.members;
     if (!DEMO && me && me.role === "admin" && members.length < 5 && !autoImportTried) { autoImportTried = true; setTimeout(autoImportTeam, 0); } live = d.live; weekShifts = d.week; myWeek = d.myWeek || []; myMonth = d.myMonth || []; timeOff = d.timeOff || []; timeline = d.timeline || []; notifs = d.notifications || []; meetings = d.meetings || []; cycles = d.cycles || []; reviews = d.reviews || []; pupdates = d.updates || []; announcements = d.announcements || []; mySched = d.mySchedule || []; if (d.shift) shiftCfg = d.shift; schedToday = d.schedToday || {}; today = d.today; skew = d.now - Date.now();
+    try { restoreFilters(); } catch (e) {}
   }
   // If a refresh is already running (e.g. the 2-second live check), queue one more right after it instead of skipping,
   // so a change you just made always shows on the very next paint.
@@ -5000,7 +5002,7 @@ dialog::backdrop{background:var(--scrim)}
     lv.loading = true;
     try { const d = await api("/api/data?leveling=1"); lv.rows = d.rows || []; lv.bands = { ...lvDefBands(), ...(d.bands || {}) }; lv.ladder = d.ladder || lvDefLadder(); lv.canEditAll = !!d.canEditAll; lv.access = d.access || []; lv.err = ""; }
     catch (e) { lv.err = e.message; }
-    lv.loading = false; lv.at = Date.now(); if (view === "leveling") renderLeveling();
+    lv.loading = false; lv.at = Date.now(); if (view === "leveling" || !$("view-leveling").hidden) renderLeveling();
   }
   // Save one person; also update the member list so the org chart, profile and Talent show it straight away.
   async function lvSave(p, fields, label) {
@@ -5013,7 +5015,7 @@ dialog::backdrop{background:var(--scrim)}
   function renderLeveling() {
     const B = $("levelingBody"); if (!B) return;
     if (!levelingOn) { B.innerHTML = `<div class="empty"><b>Team Leveling isn’t open to you</b>Ask Alan if you need access.</div>`; return; }
-    if (!lv.at && !lv.loading) { B.innerHTML = `<div class="empty"><b>Loading…</b></div>`; loadLeveling(); return; }
+    if (!lv.at) { B.innerHTML = `<div class="empty"><b>Loading…</b></div>`; if (!lv.loading) loadLeveling(); return; }
     if (lv.err) { B.innerHTML = `<div class="empty"><b>Couldn’t load Team Leveling</b>${esc(lv.err)}</div>`; return; }
     const admin = true, ladder = lv.ladder || lvDefLadder(), bands = lv.bands || lvDefBands();   // everyone with access can edit
     const tabs = [["roster", "Roster"], ["ladder", "Job ladder"], ["bands", "Pay bands"], ["summary", "Summary"]];
@@ -6220,6 +6222,14 @@ dialog::backdrop{background:var(--scrim)}
   }
   let mxMode = "team";
   function renderMetrics() {
+    const keep = [...$("mxBody").querySelectorAll(".prwrap")].map(w => [w.scrollTop, w.scrollLeft]);   // inner scroll positions
+    const pageY = window.scrollY;
+    renderMetricsInner();
+    const now = [...$("mxBody").querySelectorAll(".prwrap")];
+    now.forEach((w, i) => { if (keep[i]) { w.scrollTop = keep[i][0]; w.scrollLeft = keep[i][1]; } });
+    if (Math.abs(window.scrollY - pageY) > 2) window.scrollTo(0, pageY);
+  }
+  function renderMetricsInner() {
     const admin = isAdmin();
     if (admin) {
       $("mxPills").hidden = false;
@@ -8011,7 +8021,9 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   function shTargets() {
     const v = document.querySelector("main section:not([hidden])") || document;
     const heads = [...v.querySelectorAll(".tlwrap .tlhead"), ...[...v.querySelectorAll("table")].filter(t => t.tBodies[0] && t.tBodies[0].rows.length >= 5).map(t => t.tHead).filter(Boolean)];
-    return heads.filter(h => h.offsetParent !== null && !h.closest(".lvsolo,dialog"));
+    return heads.filter(h => { if (h.offsetParent === null || h.closest(".lvsolo,dialog,.prwrap")) return false;
+      const box = h.closest(".tablewrap,.tlwrap"); if (box) { const cs = getComputedStyle(box); if (/(auto|scroll)/.test(cs.overflowY) && box.scrollHeight > box.clientHeight + 2) return false; }
+      return true; });
   }
   function shUpdate() {
     SH.raf = 0;
@@ -8023,7 +8035,9 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
     if (!SH.el) { SH.el = document.createElement("div"); SH.el.className = "shclone"; document.body.appendChild(SH.el);
       SH.el.addEventListener("click", e => { if (!SH.src) return; if (e.target.closest("select")) return; const t = e.target.closest("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th"); if (!t) return;
         const all = [...SH.el.querySelectorAll("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th")], i = all.indexOf(t);
-        const real = [...SH.src.querySelectorAll("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th")][i]; if (real) { e.preventDefault(); real.click(); } });
+        let real = [...SH.src.querySelectorAll("button,a,input,[data-sort],[data-lvsort],[data-rvsort],th")][i];
+        if (real && real.tagName === "TH" && real.querySelector("button")) real = real.querySelector("button");
+        if (real) { e.preventDefault(); real.click(); } });
       SH.el.addEventListener("change", e => { if (!SH.src || e.target.tagName !== "SELECT") return; const i = [...SH.el.querySelectorAll("select")].indexOf(e.target), real = SH.src.querySelectorAll("select")[i];
         if (real) { real.value = e.target.value; real.dispatchEvent(new Event("change", { bubbles: true })); } }); }
     const scroller = pick.closest(".tlwrap,.tablewrap") || pick.closest("table")?.parentElement || pick.parentElement;
@@ -8047,6 +8061,27 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
   window.addEventListener("resize", () => { SH.sig = ""; shSchedule(); });
   document.addEventListener("scroll", shSchedule, { capture: true, passive: true });   // the page, or any box that scrolls
   new MutationObserver(() => { SH.sig = ""; shSchedule(); }).observe(document.querySelector("main") || document.body, { childList: true, subtree: true });
+  // ---------- Each person’s own filters ----------
+  // Filters, dates and sorts live in this browser for the signed-in person only (never on the server), so Alan picking a
+  // date or a team doesn’t change what Peds sees. They’re remembered per person, so a reload keeps them too.
+  let filtersRestoredFor = null;
+  const myFiltersKey = () => me ? `pltc-filters-${me.id}` : null;
+  const snapFilters = () => JSON.stringify({ ov: { tlRange, ovDept, tlMode, tlDate }, pr: { range: pr.range, date: pr.date, dept: pr.dept, sort: pr.sort, card: pr.card, slot: pr.slot },
+    lv: { dept: lv.dept, rank: lv.rank, change: lv.change, sort: lv.sort, tab: lv.tab }, rv: { dept: rvDept, rec: recFilter, sort: rvSort, scope: rvScope } });
+  let lastFilterSnap = "";
+  function saveFilters() { const k = myFiltersKey(); if (!k) return; const s1 = snapFilters(); if (s1 === lastFilterSnap) return; lastFilterSnap = s1; try { localStorage.setItem(k, s1); } catch (e) {} }
+  function restoreFilters() {
+    const k = myFiltersKey(); if (!k || filtersRestoredFor === me.id) return; filtersRestoredFor = me.id;
+    let f = null; try { f = JSON.parse(localStorage.getItem(k) || "null"); } catch (e) {}
+    if (!f) return;
+    const today0 = todayIn(tz);
+    if (f.ov) { tlRange = f.ov.tlRange || tlRange; ovDept = f.ov.ovDept || ovDept; tlMode = f.ov.tlMode || tlMode; if (f.ov.tlDate && f.ov.tlDate <= today0) tlDate = f.ov.tlDate; }
+    if (f.pr) { Object.assign(pr, { range: f.pr.range || pr.range, dept: f.pr.dept || pr.dept, sort: f.pr.sort || pr.sort, card: f.pr.card || pr.card, slot: f.pr.slot || 0 }); if (f.pr.date && f.pr.date <= today0) pr.date = f.pr.date; }
+    if (f.lv) Object.assign(lv, { dept: f.lv.dept || lv.dept, rank: f.lv.rank || lv.rank, change: f.lv.change || lv.change, sort: f.lv.sort || lv.sort, tab: f.lv.tab || lv.tab });
+    if (f.rv) { rvDept = f.rv.dept || rvDept; recFilter = f.rv.rec ?? recFilter; rvSort = f.rv.sort || rvSort; rvScope = f.rv.scope ?? rvScope; }
+    lastFilterSnap = snapFilters();
+  }
+  setInterval(saveFilters, 1500); window.addEventListener("pagehide", saveFilters);
   // ---------- boot ----------
   $("authLogo").src = document.querySelector(".logo").src;
   const h = location.hash.slice(1); if (VIEWS.includes(h)) view = h; else if (h.startsWith("mytime-")) view = "mytime"; else if (h.startsWith("profile-")) view = "profile";

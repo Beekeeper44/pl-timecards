@@ -391,3 +391,9 @@ Review cycle table: team pills (All teams · Managers · Analysts · Review · G
 
 
 **Employee of the Month by month:** **⭐ Pick Employee of the Month** (Alan / Karl) has a **Month** picker — choose any month and one person. This month’s winner gets the EOM badge; earlier months show under the bar as **Past winners** (newest first, × to remove). Stored as `settings.eom_history` ({ "YYYY-MM": memberId }); an EOM picked the old way is carried over once on deploy.
+
+
+Metrics: the Cards by task / Overtime table keeps its own scroll position and sort when the page redraws itself (live updates), and tables that scroll inside their own box (Metrics) use their own sticky header instead of the floating copy.
+
+
+**Filters are per person:** dates, ranges, team pills, sorts and tabs (Team overview, Metrics, Team Leveling, review cycles) live only in that person’s browser — nothing is shared through the server — and are remembered per person (`localStorage pltc-filters-<member id>`), so a reload keeps them. One person changing a filter never changes what anyone else sees.
