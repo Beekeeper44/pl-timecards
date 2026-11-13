@@ -1349,6 +1349,19 @@ div.tctable.muted{opacity:.55}
 .eomhist{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-6px 0 14px} .eomhist .hl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:4px}
 .eomh{display:inline-flex;align-items:center;gap:8px;padding:5px 8px 5px 6px;border:1px solid var(--line2);border-radius:999px;background:var(--panel)} .eomh small{display:block;font-size:11px;color:#f2c94c;font-weight:700} .eomh b{font-size:13px} .eomh a{color:var(--text);text-decoration:none} .eomh a:hover{text-decoration:underline}
 .eomonth{display:grid;gap:4px;font-size:13px;color:var(--muted);margin:4px 0 8px} .eomonth input{max-width:220px}
+#dlgRej{width:min(1000px,calc(100vw - 32px));max-width:none;max-height:calc(100vh - 32px)}
+#dlgRej .dlg{padding:28px 32px} #dlgRej .rejwho h2{font-size:26px} #dlgRej .rejwho small{font-size:15px} #dlgRej .rejwho .av{width:54px!important;height:54px!important;font-size:16px}
+#dlgRej .rejpills .fpill{font-size:16px;padding:8px 20px} #dlgRej #rejWhen{font-size:16px;color:var(--text)} #dlgRej .rejmonths .fpill{font-size:15px;padding:7px 16px}
+#dlgRej .tcst span{font-size:13px} #dlgRej .tcst b{font-size:36px} #dlgRej .tcst{padding:16px 18px}
+#dlgRej .rejtable th{font-size:15px;padding:12px 14px!important} #dlgRej .rejtable td{font-size:17px;padding:12px 14px!important} #dlgRej .rejtable td small{font-size:14px}
+#dlgRej .rejtable .barc{width:200px} #dlgRej .rbar{height:10px} #dlgRej .rejtable tr.zero td{opacity:.55} #dlgRej .note{font-size:14px} #dlgRej .dlg{width:100%;max-width:none;box-sizing:border-box} #dlgRej .ttable{min-width:0!important;width:100%} .rejhead{display:flex;align-items:center;gap:12px} .rejwho{display:flex;align-items:center;gap:12px;flex:1} .rejwho h2{margin:0;font-size:21px} .rejwho small{color:var(--muted)} .rejwho .av{width:44px!important;height:44px!important}
+.rejpills{display:flex;gap:8px;align-items:center;margin:14px 0 12px} .rejpills .fpill.on{background:var(--text);color:var(--bg);border-color:var(--text)} .rejpills .grow{flex:1}
+.rejmonths{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 12px} .rejmonths .fpill{font-size:13px;padding:5px 12px} .rejmonths .fpill.on{background:color-mix(in srgb,var(--brand) 18%,transparent);border-color:var(--brand);color:var(--text)}
+.rejstats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px} .rejstats b.r{color:var(--red)}
+.rejtable td small{color:var(--muted);margin-left:8px;font-size:12px} .rejtable .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px} .rejtable tr.zero td{opacity:.45} .rejtable td.rej{color:var(--red);font-weight:800}
+.rejtable .barc{width:160px} .rbar{height:8px;border-radius:6px;background:var(--line);overflow:hidden} .rbar i{display:block;height:100%;background:var(--red)}
+.myrejtile{cursor:pointer;font:inherit;text-align:left;border:1px solid color-mix(in srgb,var(--red) 55%,var(--line2))!important;background:color-mix(in srgb,var(--red) 10%,var(--panel))!important;color:var(--text)} .myrejtile b{color:var(--red)} .myrejtile span{color:var(--text)} .myrejtile:hover{border-color:var(--red)!important}
+.rejbtn{background:none;border:0;padding:2px 6px;border-radius:6px;color:inherit;font:inherit;font-weight:800;cursor:pointer;text-decoration:underline dotted} .rejbtn:hover{background:color-mix(in srgb,var(--red) 18%,transparent)}
 .eombar{display:flex;align-items:center;gap:16px;padding:14px 18px;margin:0 0 14px;border:1px solid color-mix(in srgb,#f2c94c 45%,var(--line));border-radius:14px;background:color-mix(in srgb,#f2c94c 6%,var(--panel))}
 .eombar .wtitle{font-size:16px} .eommo{font-weight:600;color:#f2c94c;margin-left:6px} .eomwho{display:inline-flex;align-items:center;gap:10px;margin-top:6px;text-decoration:none;color:var(--text)} .eomwho small{color:var(--muted)} .eompick{margin-left:auto}
 .chsub{font-size:13px;font-weight:700;margin:6px 0 6px} .chsub small{font-weight:500;color:var(--muted)} .chspecial{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -2388,6 +2401,14 @@ dialog::backdrop{background:var(--scrim)}
     <h2>Review questions</h2>
     <div id="rqBody"></div>
     <div class="btns spread"><button class="btn" type="button" id="rqReset">Reset to the original questions</button><span class="grow"></span><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn primary" value="save" id="rqSave">Save questions</button></div>
+  </form>
+</dialog>
+<dialog id="dlgRej">
+  <form class="dlg" method="dialog">
+    <div class="rejhead"><span id="rejHead" class="rejwho"></span><button class="btn sm" value="cancel" formnovalidate aria-label="Close">✕</button></div>
+    <div class="rejpills" id="rejPills"><button type="button" class="fpill" data-rxr="day">Today</button><button type="button" class="fpill" data-rxr="week">Week</button><button type="button" class="fpill" data-rxr="month">Month</button><span class="grow"></span><span class="dim" id="rejWhen"></span></div>
+    <div class="rejmonths" id="rejMonths" hidden></div>
+    <div id="rejBody"></div>
   </form>
 </dialog>
 <dialog id="dlgEom">
@@ -6118,7 +6139,7 @@ dialog::backdrop{background:var(--scrim)}
         ${rng === "day" && sxs.on && pr.card !== "overtime" ? sxsHtml(from) : ""}
         <div class="tablewrap flat prwrap"><table class="ttable prtable ${rng !== "day" ? "multi" : ""}"><thead><tr>${th("name", "Team member", "nm")}${cols.map(c => th(c, esc(colLabel(c)), /REJECT/.test(c) ? "num rej" : "num")).join("")}${th("total", "Total", "num tot")}${rng !== "day" ? th("avg", "Avg / day", "num avg") : ""}</tr></thead><tbody>
           ${rows.map(r => { const m = memberOf(r); return `<tr class="prsel ${pr.sel === rowKey(r) ? "on" : ""} ${r.none ? "prnone" : ""}" data-prsel="${esc(rowKey(r))}" title="Show ${esc(m?.name || r.name)}’s numbers above"><td class="nm">${m ? `<a class="c-name2" href="#profile-${m.id}">${avatar(m)}<span><b>${esc(m.name)}</b><small>${esc(m.dept)}${r.none ? ` · <span class="dim">no cards ${rng === "day" ? "this day" : "in this period"}</span>` : ""}</small></span></a>` : (() => { const tm = mxTeamOf(r.name); return `<span class="c-name2">${tm ? `<span class="av ini" style="background:color-mix(in srgb, ${deptColor(tm)} 18%, transparent);box-shadow:inset 0 0 0 1.5px ${deptColor(tm)};color:var(--text)">${esc(initials(r.name))}</span>` : ""}<span><b>${esc(r.name)}</b><small class="${tm ? "" : "dim"}">${tm ? `${esc(tm)} <span class="dim">· from Metabase</span>` : "not on the team list"}${isAdmin() ? ` · <select class="mxteam" data-mxteam="${esc(r.name)}" title="Which team ${esc(r.name)}’s numbers count under">${["", "Oregon", ...DEPTS.map(([dd]) => dd)].map(dd => `<option value="${esc(dd)}" ${dd === tm ? "selected" : ""}>${dd || "Set team…"}</option>`).join("")}</select>${tm ? "" : ` <button class="linkbtn" data-mxadd="${esc(r.name)}">＋ Add as app user</button>`}` : ""}</small></span></span>`; })()}</td>
-            ${cols.map(c => `<td class="num ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""} ${r.values[c] ? "" : "z"}"${colStyle(c)}>${r.values[c] ? r.values[c].toLocaleString() : ""}</td>`).join("")}<td class="num tot">${r.total.toLocaleString()}</td>${rng !== "day" ? `<td class="num avg">${Math.round(r.total / (r.days || 1)).toLocaleString()}<small>${r.days || 1}d</small></td>` : ""}</tr>`; }).join("") || `<tr><td colspan="${cols.length + (rng !== "day" ? 3 : 2)}" class="rqempty">${isCur ? `No cards ${dayLabel} yet. Metabase updates every hour.` : `No cards for ${esc(periodName(rng, from))}.`}${(() => {
+            ${cols.map(c => `<td class="num ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""} ${r.values[c] ? "" : "z"}"${colStyle(c)}>${r.values[c] ? (c === "REJECTS" && isAdmin() ? `<button class="rejbtn" data-rejof="${esc(r.name)}" data-rejid="${esc(r.memberId || "")}" title="See ${esc((m?.name || r.name).split(" ")[0])}’s rejects by subgrade">${r.values[c].toLocaleString()}</button>` : r.values[c].toLocaleString()) : ""}</td>`).join("")}<td class="num tot">${r.total.toLocaleString()}</td>${rng !== "day" ? `<td class="num avg">${Math.round(r.total / (r.days || 1)).toLocaleString()}<small>${r.days || 1}d</small></td>` : ""}</tr>`; }).join("") || `<tr><td colspan="${cols.length + (rng !== "day" ? 3 : 2)}" class="rqempty">${isCur ? `No cards ${dayLabel} yet. Metabase updates every hour.` : `No cards for ${esc(periodName(rng, from))}.`}${(() => {
               // point to the nearest day that has numbers (e.g. Pacific Nov 2 overtime is Manila Nov 3)
               const have = (d.days || []).filter(k => k !== from); if (!have.length) return "";
               const near = have.slice().sort((a, b) => Math.abs(Date.parse(a) - Date.parse(from)) - Math.abs(Date.parse(b) - Date.parse(from)))[0];
@@ -6199,7 +6220,7 @@ dialog::backdrop{background:var(--scrim)}
         <div class="tcst"><span>This week</span><b>${wk.reduce((a, x) => a + x.total, 0).toLocaleString()}</b><small>${wk.length} day${wk.length === 1 ? "" : "s"} since Monday</small></div>
         <div class="tcst"><span>Daily average</span><b>${avg.toLocaleString()}</b><small>${best ? `best day ${best.total.toLocaleString()} · ${dayLbl(best.date)}` : "no days yet"}</small></div></div>
       <div class="panel"><div class="wtitle">${refDay === today ? "Today" : dayLbl(refDay)} by task</div>
-        ${t && t.total ? `<div class="mycards">${cols.filter(c => t.values[c] || !/REJECT/.test(c)).map(c => `<div class="mytask ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""}"${colStyle(c)}><b>${t.values[c].toLocaleString()}</b><span>${esc(colLabel(c))}</span></div>`).join("")}</div>` : `<div class="note" style="margin-top:8px">No cards yet today. They show here as Metabase records them.</div>`}</div>
+        ${t && t.total ? `<div class="mycards">${cols.filter(c => !/REJECT/.test(c)).map(c => `<div class="mytask ${/REJECT/.test(c) ? "rej" : ""} ${COL_TEAM[c] ? "tcol" : ""}"${colStyle(c)}><b>${t.values[c].toLocaleString()}</b><span>${esc(colLabel(c))}</span></div>`).join("")}<button type="button" class="mytask rej myrejtile" data-myrej title="See your rejects by subgrade"><b>${(t.values.REJECTS || 0).toLocaleString()}</b><span>Rejects ›</span></button>${""}</div>` : `<div class="note" style="margin-top:8px">No cards yet today. They show here as Metabase records them.</div>`}</div>
       <div class="panel"><div class="weekhead"><div class="wtitle">Last 14 days</div><div class="note">Cards per day · today in green</div></div>
         <div class="mybars">${last14.map(x => `<div class="mybar ${x.date === today ? "today" : ""}" title="${dayLbl(x.date)}: ${x.total.toLocaleString()} cards"><em>${x.total ? x.total.toLocaleString() : ""}</em><i style="height:${Math.round(x.total / max * 100)}%"></i><span>${fmtDayKey(x.date, { weekday: "narrow" })}<br>${+x.date.slice(8)}</span></div>`).join("") || '<div class="note">No days yet.</div>'}</div></div>
       <div class="rpanel"><div class="tchead"><div class="wtitle">By day</div><span class="grow"></span><span class="dim" style="font-size:13px">From Metabase · updated ${ago(d.fetchedAt)}</span></div>
@@ -8082,6 +8103,75 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
     lastFilterSnap = snapFilters();
   }
   setInterval(saveFilters, 1500); window.addEventListener("pagehide", saveFilters);
+  // ---------- Rejects breakdown (click a person’s Rejects number in Cards by task) ----------
+  // Metabase question 46531 has a rejection column per subgrade/task (…_REJECTIONS). They’re matched to the task by name.
+  const REJ_TASKS = [["CROP_CARDS", "Crop", /CROP/], ["CARD_TYPE_VERIFY_CARDS", "Data Verify", /VERIF/], ["CARD_TYPE_CARDS", "Data", /CARD_TYPE|DATA/], ["CORNER_CARDS", "Corner", /CORNER/],
+    ["CENTERING_CARDS", "Center", /CENT/], ["EDGE_CARDS", "Edge", /EDGE/], ["SURFACE_CARDS", "Surface", /SURFACE/], ["SIGNATURE_CARDS", "Sign.", /SIGN/], ["REVIEW_CARDS", "Review", /REVIEW/],
+    ["RECOMP_CARDS", "Recomp", /RECOMP/], ["EV_CARDS", "EV", /(^|_)EV(_|$)/]];
+  const REJ_SHOW = ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS", "CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "SIGNATURE_CARDS", "REVIEW_CARDS", "RECOMP_CARDS", "EV_CARDS"];   // same order as the table
+  const rejTaskOf = col => { if (/^(GRADER|VERIFIER)_REJECT/.test(col)) return null;   // the older overall columns (not per subgrade)
+    const t = REJ_TASKS.find(([, , re]) => re.test(col.replace(/_?REJECT(ION)?S?/, ""))); return t ? t[0] : null; };
+  const rx = { name: null, range: "day", data: null, loading: false, month: null, months: [] };
+  async function rejLoad() {
+    rx.loading = true; rejRender();
+    if (rx.self) {   // My Metrics: add up my own days from the personal data
+      const sr = (mym.data && mym.data.series) || [], td = todayIn(tz), cur = td.slice(0, 7);
+      const ref = sr.some(x => x.date === td && x.total) ? td : (sr.filter(x => x.total).slice(-1)[0]?.date || td);
+      let from = ref, to = ref;
+      if (rx.range === "week") { from = mondayOf(ref); to = addDays(from, 6); }
+      if (rx.range === "month") { const m = rx.month || cur; from = `${m}-01`; to = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5), 0)).toISOString().slice(0, 10); }
+      const vals = {}; sr.filter(x => x.date >= from && x.date <= to).forEach(x => Object.entries(x.values || {}).forEach(([k, v]) => { if (typeof v === "number") vals[k] = (vals[k] || 0) + v; }));
+      rx.data = { rows: [{ name: rx.name, memberId: me.id, values: vals }], from, to, days: sr.map(x => x.date) };
+      rx.months = [...new Set([...sr.map(x => x.date.slice(0, 7)), cur])].filter(m => m <= cur).sort();
+      rx.loading = false; rejRender(); return;
+    }
+    try {
+      // Month: the chosen month (anchored mid-month, or today for this month); otherwise the day the table is on
+      const td = todayIn(tz), cur = td.slice(0, 7), anchor = rx.range === "month" && rx.month && rx.month !== cur ? `${rx.month}-15` : rx.range === "month" ? td : pr.date;
+      if (DEMO) { const kr = pr.range, kd = pr.date; pr.range = rx.range; pr.date = anchor || null; rx.data = sampleProduction(); pr.range = kr; pr.date = kd; }
+      else rx.data = await api(`/api/data?production=1&tz=${tz === PAY_TZ ? "manila" : "pacific"}&range=${rx.range}${anchor ? `&date=${anchor}` : ""}`);
+      // months that have data, oldest → newest, up to this month (Oct, Nov, Dec … as time goes on)
+      const days = (rx.data && rx.data.days) || (pr.data && pr.data.days) || [];
+      rx.months = [...new Set([...days.map(k => k.slice(0, 7)), cur])].filter(m => m <= cur).sort();
+    } catch (e) { rx.data = { error: e.message }; }
+    rx.loading = false; rejRender();
+  }
+  function rejRender() {
+    const B = $("rejBody"); if (!B) return;
+    const m = rx.id ? memberById(rx.id) : null, nm = m?.name || rx.name;
+    const fmtDayShort = k => new Date(k + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+    $("rejHead").innerHTML = `${m ? avatar(m) : ""}<div><h2>${esc(nm)} · Rejects</h2><small>${esc(m ? `${m.dept} · ${jobTitleOf(m) || ""}` : "from Metabase")}</small></div>`;
+    $("rejPills").querySelectorAll("[data-rxr]").forEach(b => b.classList.toggle("on", b.dataset.rxr === rx.range));
+    const mo = $("rejMonths"), curM = todayIn(tz).slice(0, 7);
+    mo.hidden = rx.range !== "month" || !rx.months.length;
+    mo.innerHTML = rx.months.map(m => `<button type="button" class="fpill sm ${m === (rx.month || curM) ? "on" : ""}" data-rxm="${m}">${new Date(m + "-01T12:00:00Z").toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" })}</button>`).join("");
+    if (rx.loading || !rx.data) { B.innerHTML = `<div class="empty"><b>Loading…</b></div>`; return; }
+    const d = rx.data; if (d.error) { B.innerHTML = `<div class="empty"><b>Couldn’t load</b>${esc(d.error)}</div>`; return; }
+    const row = (d.rows || []).find(r => (rx.id && r.memberId === rx.id) || r.name === rx.name); const v = row ? withRejects({ ...row.values }) : {};
+    $("rejWhen").textContent = d.from && d.to && d.from !== d.to ? `${fmtDayShort(d.from)} – ${fmtDayShort(d.to)}` : fmtDayShort(d.from || d.date || todayIn(tz));
+    const rejCols = Object.keys(v).filter(k => /REJECT/.test(k) && k !== "REJECTS");
+    let per = {}; rejCols.forEach(k => { const t = rejTaskOf(k); if (t) per[t] = (per[t] || 0) + (v[k] || 0); else per[k] = (per[k] || 0) + (v[k] || 0); });
+    const totalRej = v.REJECTS ?? rejCols.reduce((a, k) => a + (v[k] || 0), 0);
+    let sample = false;
+    if (DEMO && !Object.keys(per).some(k => REJ_TASKS.some(t => t[0] === k)) && totalRej) {   // demo / older question without per-task columns: spread it so the layout shows
+      sample = true; per = {}; let left = totalRej; const done = REJ_TASKS.filter(([c]) => v[c]).sort((a, b) => v[b[0]] - v[a[0]]);
+      done.forEach(([c], i) => { const n = i === done.length - 1 ? left : Math.min(left, Math.round(totalRej * v[c] / done.reduce((a, [x]) => a + v[x], 0))); per[c] = n; left -= n; }); }
+    const doneAll = REJ_TASKS.reduce((a, [c]) => a + (v[c] || 0), 0);
+    const rate = (x, n) => n ? `${(x / n * 100).toFixed(1)}%` : "—";
+    const rowsH = REJ_SHOW.map(c => REJ_TASKS.find(t => t[0] === c)).map(([c, label]) => { const n = v[c] || 0, x = per[c] || 0, col = deptColor(COL_TEAM[c] || "Data");
+      return `<tr class="${n || x ? "" : "zero"}"><td><span class="dot" style="background:${col}"></span><b style="color:${col}">${label}</b><small>${esc(COL_TEAM[c] || "")}</small></td><td class="num">${n ? n.toLocaleString() : "—"}</td><td class="num ${x ? "rej" : ""}">${x || "—"}</td><td class="num">${n ? rate(x, n) : "—"}</td><td class="barc"><div class="rbar"><i style="width:${n ? Math.min(100, x / n * 800) : 0}%"></i></div></td></tr>`; }).join("")
+      + Object.keys(per).filter(k => !REJ_TASKS.some(t => t[0] === k) && per[k]).map(k => `<tr><td><b>${esc(colLabel(k))}</b></td><td class="num">—</td><td class="num rej">${per[k]}</td><td class="num">—</td><td></td></tr>`).join("");
+    B.innerHTML = `${!row ? `<div class="note">No cards for ${esc(nm.split(" ")[0])} in this period.</div>` : ""}
+      <div class="rejstats"><div class="tcst"><span>Cards done</span><b>${doneAll.toLocaleString()}</b></div><div class="tcst"><span>Rejected</span><b class="r">${totalRej || 0}</b></div><div class="tcst"><span>Reject rate</span><b>${rate(totalRej || 0, doneAll)}</b></div></div>
+      <div class="tablewrap flat"><table class="ttable rejtable"><thead><tr><th>Subgrade / task</th><th class="num">Done</th><th class="num">Rejected</th><th class="num">Reject rate</th><th></th></tr></thead><tbody>${rowsH}</tbody>
+      <tfoot><tr><td><b>Total</b></td><td class="num"><b>${doneAll.toLocaleString()}</b></td><td class="num rej"><b>${totalRej || 0}</b></td><td class="num"><b>${rate(totalRej || 0, doneAll)}</b></td><td></td></tr></tfoot></table></div>
+      ${sample ? `<div class="note">Demo: the split by subgrade is made up.</div>` : !Object.keys(per).some(k => REJ_TASKS.some(t => t[0] === k)) && totalRej ? `<div class="note">This Metabase question doesn’t have a rejection column per subgrade yet, so only the totals it has are shown.</div>` : ""}`;
+  }
+  function openMyRejects() { rx.self = true; rx.name = me.name; rx.id = me.id; rx.range = "day"; rx.month = todayIn(tz).slice(0, 7); rx.data = null; $("dlgRej").showModal(); rejLoad(); }
+  function openRejects(name, id) { if (!isAdmin()) return; /* admins only */ rx.self = false; rx.name = name; rx.id = id || null; rx.month = todayIn(tz).slice(0, 7); rx.range = pr.range === "week" || pr.range === "month" ? pr.range : "day"; rx.data = null; $("dlgRej").showModal(); rejLoad(); }
+  document.addEventListener("click", e => { if (e.target.closest("[data-myrej]")) { e.preventDefault(); openMyRejects(); return; } const b = e.target.closest("[data-rejof]"); if (b) { e.preventDefault(); e.stopPropagation(); openRejects(b.dataset.rejof, b.dataset.rejid); return; }
+    const p = e.target.closest("[data-rxr]"); if (p) { rx.range = p.dataset.rxr; if (rx.range === "month" && !rx.month) rx.month = todayIn(tz).slice(0, 7); rejLoad(); return; }
+    const mm = e.target.closest("[data-rxm]"); if (mm) { rx.month = mm.dataset.rxm; rejLoad(); } }, true);
   // ---------- boot ----------
   $("authLogo").src = document.querySelector(".logo").src;
   const h = location.hash.slice(1); if (VIEWS.includes(h)) view = h; else if (h.startsWith("mytime-")) view = "mytime"; else if (h.startsWith("profile-")) view = "profile";

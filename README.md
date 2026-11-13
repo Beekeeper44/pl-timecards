@@ -397,3 +397,12 @@ Metrics: the Cards by task / Overtime table keeps its own scroll position and so
 
 
 **Filters are per person:** dates, ranges, team pills, sorts and tabs (Team overview, Metrics, Team Leveling, review cycles) live only in that person’s browser — nothing is shared through the server — and are remembered per person (`localStorage pltc-filters-<member id>`), so a reload keeps them. One person changing a filter never changes what anyone else sees.
+
+
+**Rejects breakdown (Metrics › Cards by task):** admins click a person’s red **Rejects** number to open a pop-up (team members just see the number) with **Today · Week · Month**: cards done, rejected and reject rate, then one row per subgrade/task (Crop, Data, Data Verify, Corner, Center, Edge, Surface, Sign., Review, Recomp, EV) with done, rejected, rate and a bar. Rejection columns from Metabase question 46531 are matched to their subgrade by name (…CROP…REJECT…, …CORNER…REJECT…, VERIFY → Data Verify, SIGN → Sign.); the older overall GRADER / VERIFIER rejection columns show as their own rows.
+
+
+Rejects pop-up › **Month** shows a row of month pills (every month with data, oldest → newest, up to this month — Sep, Oct, Nov … and more as time goes on); click one to see that whole month.
+
+
+**My Metrics › Today by task:** a red **Rejects ›** tile on the right (always shown, even at 0). Clicking it opens the same rejects pop-up (Today · Week · Month with month history, subgrade rows) for that person only, built from their own My Metrics numbers.
