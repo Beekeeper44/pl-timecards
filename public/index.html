@@ -5977,7 +5977,11 @@ dialog::backdrop{background:var(--scrim)}
     const ordered = [...COL_ORDER.filter(c => base.includes(c)), ...base.filter(c => !COL_ORDER.includes(c))];
     return columns.some(c => /REJECTION/.test(c)) ? [...ordered, "REJECTS"] : ordered;
   }
-  const withRejects = v => { if (!v || v.REJECTS != null) return v; v.REJECTS = Object.keys(v).filter(k => /REJECTION/.test(k)).reduce((a, k) => a + (v[k] || 0), 0); return v; };
+  // Rejects = the per-subgrade rejection columns when Metabase has them (CENTER_REJECTIONS …); the older overall GRADER / VERIFIER
+  // columns count the same rejections again, so they’re only used when there are no per-subgrade columns (no double counting).
+  const isOverallRej = k => /^(GRADER|VERIFIER)_REJECT/.test(k);
+  const rejKeys = v => { const all = Object.keys(v).filter(k => /REJECT/.test(k) && k !== "REJECTS"), per = all.filter(k => !isOverallRej(k)); return per.length ? per : all; };
+  const withRejects = v => { if (!v || v.REJECTS != null) return v; v.REJECTS = rejKeys(v).reduce((a, k) => a + (v[k] || 0), 0); return v; };
   const colLabel = k => COL_LABEL[k] || k.replace(/_CARDS$/, "").replace(/_/g, " ").toLowerCase().replace(/^\w/, c => c.toUpperCase());
   function demoProduction() {
     const cols = Object.keys(COL_LABEL); const by = { Data: ["CROP_CARDS", "CARD_TYPE_CARDS", "CARD_TYPE_VERIFY_CARDS"], Review: ["REVIEW_CARDS", "CROP_CARDS", "SURFACE_CARDS"], Grading: ["CORNER_CARDS", "CENTERING_CARDS", "EDGE_CARDS", "SURFACE_CARDS", "CROP_CARDS"], Recomp: ["EV_CARDS", "RECOMP_CARDS"], Items: ["CARD_TYPE_CARDS", "REVIEW_CARDS", "EV_CARDS"], CS: [], Community: ["SIGNATURE_CARDS"], Managers: ["REVIEW_CARDS"] };
@@ -8149,9 +8153,9 @@ ${LM} #myTabs{border-color:${D("#0b1016", .45)}} ${LM} #myTabs a[aria-selected="
     const d = rx.data; if (d.error) { B.innerHTML = `<div class="empty"><b>Couldn’t load</b>${esc(d.error)}</div>`; return; }
     const row = (d.rows || []).find(r => (rx.id && r.memberId === rx.id) || r.name === rx.name); const v = row ? withRejects({ ...row.values }) : {};
     $("rejWhen").textContent = d.from && d.to && d.from !== d.to ? `${fmtDayShort(d.from)} – ${fmtDayShort(d.to)}` : fmtDayShort(d.from || d.date || todayIn(tz));
-    const rejCols = Object.keys(v).filter(k => /REJECT/.test(k) && k !== "REJECTS");
+    const rejCols = rejKeys(v);   // per-subgrade columns when there are any (the overall GRADER / VERIFIER ones would count twice)
     let per = {}; rejCols.forEach(k => { const t = rejTaskOf(k); if (t) per[t] = (per[t] || 0) + (v[k] || 0); else per[k] = (per[k] || 0) + (v[k] || 0); });
-    const totalRej = v.REJECTS ?? rejCols.reduce((a, k) => a + (v[k] || 0), 0);
+    const totalRej = rejCols.reduce((a, k) => a + (v[k] || 0), 0);
     let sample = false;
     if (DEMO && !Object.keys(per).some(k => REJ_TASKS.some(t => t[0] === k)) && totalRej) {   // demo / older question without per-task columns: spread it so the layout shows
       sample = true; per = {}; let left = totalRej; const done = REJ_TASKS.filter(([c]) => v[c]).sort((a, b) => v[b[0]] - v[a[0]]);

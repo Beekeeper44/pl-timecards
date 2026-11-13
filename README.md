@@ -406,3 +406,6 @@ Rejects pop-up › **Month** shows a row of month pills (every month with data, 
 
 
 **My Metrics › Today by task:** a red **Rejects ›** tile on the right (always shown, even at 0). Clicking it opens the same rejects pop-up (Today · Week · Month with month history, subgrade rows) for that person only, built from their own My Metrics numbers.
+
+
+Rejects are counted once: when Metabase has per-subgrade rejection columns (CENTER_REJECTIONS …), Rejects (table, pop-up, My Metrics) is their sum and the older overall GRADER / VERIFIER rejection columns are ignored; those overall columns are only used when there are no per-subgrade ones.
