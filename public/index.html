@@ -3246,10 +3246,16 @@ dialog::backdrop{background:var(--scrim)}
     loadWaiters.splice(0).forEach(f => f());
   }
   // Live updates: ask the server every 4 seconds whether anything changed; if so, refresh.
+  let lastMstamp = null;
   async function pingRev() {
     if (DEMO || !me || document.hidden || loading) return;
     try { const r = await fetch("/api/data?ping=1", { credentials: "same-origin", cache: "no-store" }); if (!r.ok) return; const d = await r.json();
-      if (d.rev != null && lastRev != null && d.rev !== lastRev) { lastRev = d.rev; pr.at = 0; mym.at = 0; load().then(() => { if (view === "metrics") loadProduction(true); if (view === "mymetrics") loadMyMetrics(true); }); } else if (lastRev == null) lastRev = d.rev; } catch (e) {}
+      // Metrics stay put: they reload only when an admin presses Refresh metrics (mstamp changes) or every 15 minutes —
+      // not every time someone clocks in or saves something.
+      const mChanged = d.mstamp != null && lastMstamp != null && d.mstamp !== lastMstamp; if (d.mstamp != null) lastMstamp = d.mstamp;
+      const mStale = Date.now() - (pr.loadedAt || 0) > 15 * 60000, myStale = Date.now() - (mym.loadedAt || 0) > 15 * 60000;
+      if (mChanged || ((view === "metrics" && mStale) || (view === "mymetrics" && myStale))) { pr.at = 0; mym.at = 0; if (view === "metrics") loadProduction(true); if (view === "mymetrics" || (view === "metrics" && mxMode === "personal")) loadMyMetrics(true); }
+      if (d.rev != null && lastRev != null && d.rev !== lastRev) { lastRev = d.rev; load(); } else if (lastRev == null) lastRev = d.rev; } catch (e) {}
   }
   async function run(fn, okMsg) {
     try { await fn(); if (okMsg) toast(okMsg); await load(); return true; }
@@ -5995,9 +6001,9 @@ dialog::backdrop{background:var(--scrim)}
   async function loadProduction(force, refreshMb) {
     const zk = tz === PAY_TZ ? "manila" : "pacific";
     if (pr.zone && pr.zone !== zk) { pr.date = null; force = true; }   // switched Manila ↔ Pacific: reload that view's days
-    if (pr.loading || (!force && pr.data && Date.now() - pr.at < 60000)) return;
+    if (pr.loading || (!force && pr.data && Date.now() - pr.at < 15 * 60000)) return;   // hold steady for 15 min unless asked
     pr.loading = true; pr.zone = zk;
-    try { pr.data = DEMO ? { ...sampleProduction(), fetchedAt: refreshMb ? Date.now() : (pr.data?.fetchedAt || Date.now()) } : await api(`/api/data?production=1${pr.card === "overtime" ? `&card=overtime&slot=${pr.slot || 0}` : ""}&tz=${tz === PAY_TZ ? "manila" : "pacific"}&range=${pr.range}${pr.date ? `&date=${pr.date}` : ""}${refreshMb ? "&refresh=1" : ""}`); pr.at = Date.now(); if (pr.data?.cardId) pr.cfgCard = pr.data.cardId; }
+    try { pr.data = DEMO ? { ...sampleProduction(), fetchedAt: refreshMb ? Date.now() : (pr.data?.fetchedAt || Date.now()) } : await api(`/api/data?production=1${pr.card === "overtime" ? `&card=overtime&slot=${pr.slot || 0}` : ""}&tz=${tz === PAY_TZ ? "manila" : "pacific"}&range=${pr.range}${pr.date ? `&date=${pr.date}` : ""}${refreshMb ? "&refresh=1" : ""}`); pr.at = pr.loadedAt = Date.now(); if (pr.data?.cardId) pr.cfgCard = pr.data.cardId; }
     catch (e) { pr.data = { configured: true, error: e.message }; }
     if (pr.card === "overtime" && !pr.date && pr.data && !pr.data.error && !(pr.data.rows || []).length && (pr.data.days || []).length) {
       const td = pr.data.today || todayIn(tz), last = pr.data.days.filter(k => k <= td).sort().pop();
@@ -6179,7 +6185,7 @@ dialog::backdrop{background:var(--scrim)}
   const mym = { at: 0, data: null, loading: false };
   async function loadMyMetrics(force) {
     const mz = tz === PAY_TZ ? "manila" : "pacific"; if (mym.zone && mym.zone !== mz) force = true; mym.zone = mz;
-    if (mym.loading || (!force && mym.data && Date.now() - mym.at < 60000 && mym.uid === me?.id)) return;
+    if (mym.loading || (!force && mym.data && Date.now() - mym.at < 15 * 60000 && mym.uid === me?.id)) return;
     mym.loading = true; mym.uid = me?.id;
     try {
       if (DEMO) {
@@ -6190,7 +6196,7 @@ dialog::backdrop{background:var(--scrim)}
             series.push({ date: day, values: v, total: cols.filter(c => !/REJECT/.test(c)).reduce((a, c) => a + v[c], 0) }); }
           mym.data = { configured: true, today, columns: cols, series, fetchedAt: Date.now() }; }
       } else mym.data = await api(`/api/data?production=1&mine=1&tz=${tz === PAY_TZ ? "manila" : "pacific"}`);
-      mym.at = Date.now();
+      mym.at = mym.loadedAt = Date.now();
     } catch (e) { mym.data = { configured: true, error: e.message }; }
     if (!DEMO && mym.data && (!mym.data.configured || mym.data.error)) {
       const mine = sampleDaily().rows.find(r => r.date === SAMPLE_DAY && r.memberId === me.id);

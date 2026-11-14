@@ -21,7 +21,9 @@ export default async function handler(req, res) {
     if (req.method === "GET" && req.query.ping) {
       if (!unsign(cookies(req).pltc_s)) return fail(res, 401, "Signed out");
       res.setHeader("Cache-Control", "no-store");
-      return send(res, 200, { rev: await getRev() });
+      // mstamp changes only when an admin presses Refresh metrics (so Metrics doesn’t reload every time someone clocks in)
+      const [ms] = await sql`select value from settings where key = 'metrics_refreshed_at'`;
+      return send(res, 200, { rev: await getRev(), mstamp: ms?.value || 0 });
     }
     const me = await currentUser(req);
     if (!me) return fail(res, 401, "Signed out");
@@ -65,7 +67,8 @@ export default async function handler(req, res) {
       const day = dayOk(req.query.date) ? req.query.date : today;
       let data;
       const force = admin && req.query.refresh === "1";
-      try { data = await metabaseCardRows(c.cardId, force); if (force) await bumpRev(); } catch (e) { return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, error: e.message }); }
+      try { data = await metabaseCardRows(c.cardId, force);
+        if (force) await sql`insert into settings (key, value) values ('metrics_refreshed_at', ${JSON.stringify(Date.now())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch (e) { return send(res, 200, { configured: true, cardId: admin ? c.cardId : undefined, error: e.message }); }
       // Column names: the saved ones, else the usual ones, else the first column whose name says what it is (…NAME, …DATE, …TOTAL…)
       const pickCol = (want, re) => data.cols.includes(want) ? want : (data.cols.find(k => re.test(k)) || want);
       const nameCol = c.nameCol || pickCol("FULL_NAME", /NAME/i), dateCol = c.dateCol || pickCol("WORK_DATE", /DATE|DAY/i), totalCol = c.totalCol || pickCol("TOTAL_CARDS", /^TOTAL/i);

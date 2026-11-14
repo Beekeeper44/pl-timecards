@@ -409,3 +409,6 @@ Rejects pop-up › **Month** shows a row of month pills (every month with data, 
 
 
 Rejects are counted once: when Metabase has per-subgrade rejection columns (CENTER_REJECTIONS …), Rejects (table, pop-up, My Metrics) is their sum and the older overall GRADER / VERIFIER rejection columns are ignored; those overall columns are only used when there are no per-subgrade ones.
+
+
+**Metrics hold steady:** Metrics (team and personal) don’t reload when other people clock in or save things. They reload only when an **admin presses Refresh metrics** (everyone’s Metrics and My Metrics update within a few seconds — `settings.metrics_refreshed_at`, sent with the live check) or after 15 minutes.
