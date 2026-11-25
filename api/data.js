@@ -187,7 +187,8 @@ export default async function handler(req, res) {
       const [bands] = await sql`select value from settings where key = 'leveling_bands'`;
       const [ladder] = await sql`select value from settings where key = 'leveling_ladder'`;
       const access = await levelingIds();
-      return send(res, 200, { rows, bands: bands?.value || null, ladder: ladder?.value || null, canEditAll: true, access });
+      const [budget] = await sql`select value from settings where key = 'leveling_budget'`;   // { raise, raiseSpent, bonusUsd, rate, bonusSpent }
+      return send(res, 200, { rows, bands: bands?.value || null, ladder: ladder?.value || null, canEditAll: true, access, budget: budget?.value || {} });
     }
     if (req.method === "GET" && req.query.history) {
       const id = String(req.query.history);
@@ -551,7 +552,13 @@ export default async function handler(req, res) {
       if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
       if (b.action === "clearNew") await sql`update members set pay_new = null where active`;
       else if (b.action === "clearBonus") await sql`update members set bonus = null where active`;
-      else if (b.action === "newToCurrent") await sql`update members set pay_current = pay_new, pay_new = null where active and pay_new is not null`;
+      else if (b.action === "newToCurrent") {
+        // the raises become real: their monthly difference comes out of the raise budget for good
+        const [{ d }] = await sql`select coalesce(sum(pay_new - coalesce(pay_current, 0)), 0)::int as d from members where active and pay_new is not null and lower(coalesce(email, '')) <> 'alan@arenaclub.com'`;
+        await sql`update members set pay_current = pay_new, pay_new = null where active and pay_new is not null`;
+        const [bg] = await sql`select value from settings where key = 'leveling_budget'`; const v = { ...(bg?.value || {}) }; v.raiseSpent = (Number(v.raiseSpent) || 0) + d;
+        await sql`insert into settings (key, value) values ('leveling_budget', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      }
       else return fail(res, 400, "Unknown action.");
       return send(res, 200, { ok: true });
     }
@@ -564,6 +571,9 @@ export default async function handler(req, res) {
     }
     if (b.op === "levelingConfig") {
       if (!(await canLevel())) return fail(res, 403, "Team Leveling is only open to the people on its access list.");
+      if (b.budget !== undefined) { const [bg] = await sql`select value from settings where key = 'leveling_budget'`; const v = { ...(bg?.value || {}) };
+        for (const k of ["raise", "raiseSpent", "bonusUsd", "rate"]) if (b.budget[k] !== undefined) v[k] = Math.max(0, Number(b.budget[k]) || 0);
+        await sql`insert into settings (key, value) values ('leveling_budget', ${JSON.stringify(v)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; }
       if (b.bands !== undefined) await sql`insert into settings (key, value) values ('leveling_bands', ${JSON.stringify(b.bands)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
       if (b.ladder !== undefined) await sql`insert into settings (key, value) values ('leveling_ladder', ${JSON.stringify(b.ladder)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
       return send(res, 200, { ok: true });

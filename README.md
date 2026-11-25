@@ -412,3 +412,6 @@ Rejects are counted once: when Metabase has per-subgrade rejection columns (CENT
 
 
 **Metrics hold steady:** Metrics (team and personal) don’t reload when other people clock in or save things. They reload only when an **admin presses Refresh metrics** (everyone’s Metrics and My Metrics update within a few seconds — `settings.metrics_refreshed_at`, sent with the live check) or after 15 minutes.
+
+
+**Team Leveling budgets (Roster):** **Raise budget** (₱ a month) shows current total, new total, the difference waiting in New pay, “Already given” and what’s left (bar; red when over). **New pay → current** moves the difference into “Already given” (reset link for a new period). **Bonus budget** is entered in US dollars with a ₱-per-$ rate and shows the budget in pesos, bonuses given and what’s left (in ₱ and $). Saved in `settings.leveling_budget`; Team Leveling access only.

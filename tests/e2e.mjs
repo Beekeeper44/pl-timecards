@@ -444,6 +444,17 @@ step("9a6. Fit level, tier, rank and title to pay");
   const e = lvFit(16500, null), f = lvFit(17000, null);
   ok(e.level === "1" && e.tier === "Elite" && f.level === "1.5" && f.tier === "Prime", "₱16,500 → Level 1 · Elite; ₱17,000 → Level 1.5 · Prime"); }
 
+step("9a7. Team Leveling budgets");
+{ const [nico] = await q("select id, pay_current from members where name='Paul Nico Andrade'");
+  r = await A.op({ op: "levelingConfig", budget: { raise: 50000, bonusUsd: 2000, rate: 58 } }); let L = await A.get({ leveling: "1" });
+  ok(r.status === 200 && L.body.budget.raise === 50000 && L.body.budget.bonusUsd === 2000 && L.body.budget.rate === 58, "raise and bonus budgets are saved");
+  if (nico) { await A.op({ op: "levelingSave", id: nico.id, fields: { payCurrent: 25000, payNew: 27000, bonus: 10000 } });
+    const [{ pend }] = await q("select coalesce(sum(pay_new - coalesce(pay_current,0)),0)::int pend from members where active and pay_new is not null and lower(coalesce(email,'')) <> 'alan@arenaclub.com'");
+    r = await A.op({ op: "levelingBulk", action: "newToCurrent" }); L = await A.get({ leveling: "1" });
+    const n2 = L.body.rows.find(x => x.id === nico.id); ok(n2.payCurrent === 27000 && L.body.budget.raiseSpent === pend && pend >= 2000, `New pay → current moves the raises (incl. Nico’s ₱2,000) into “Already given” (${L.body.budget.raiseSpent})`); }
+  r = await K.op({ op: "levelingConfig", budget: { raise: 1 } }); ok(r.status === 403, "people without Team Leveling access can’t change budgets");
+  await A.op({ op: "levelingConfig", budget: { raise: 0, raiseSpent: 0, bonusUsd: 0 } }); }
+
 step("9b. Review questions can be changed");
 r = await A.op({ op: "reviewQuestions", self: [["Proudest win in {Y}?", "Give an example"]], mgr: ["Keeps the work area organized."], extra: "Anything else?" });
 let rq = (await A.get({ week: "" })).body.reviewQuestions; ok(r.status === 200 && rq.self[0][0] === "Proudest win in {Y}?" && rq.mgr.length === 1, "custom questions saved");
